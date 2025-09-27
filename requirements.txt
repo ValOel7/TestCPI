@@ -1,5 +1,2 @@
-streamlit==1.38.0
-pgmpy==0.1.24
-numpy==1.26.4
+numpy==2.0.2
 pandas==2.2.2
-networkx==3.2.1

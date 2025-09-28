@@ -238,7 +238,7 @@ customer_trust_medians = {
 # 1) DEMOGRAPHICS
 # =========================================================
 st.markdown('<div class="section">', unsafe_allow_html=True)
-st.header("1) Demographics")
+st.header("1) Choose the customers demographics")
 col1, col2 = st.columns(2, gap="large")
 with col1:
     ui_gender_code = radio_mapped("Gender", Gender, horizontal=True)
@@ -270,7 +270,7 @@ demo_labels = {
 # 2) AUTO-COMPUTED
 # =========================================================
 st.markdown('<div class="section">', unsafe_allow_html=True)
-st.header("2) Auto-computed (from demographics)")
+st.header("2) Predetermined purchase intention scores based on demographics")
 emp_score = averaged_score_for_var(empathy_medians, demo_labels)
 conv_score = averaged_score_for_var(convenience_medians, demo_labels)
 trust_score = averaged_score_for_var(customer_trust_medians, demo_labels)
@@ -289,11 +289,12 @@ st.markdown('</div>', unsafe_allow_html=True)
 # 3) CUSTOMER ANSWERS
 # =========================================================
 st.markdown('<div class="section">', unsafe_allow_html=True)
-st.header("3) Customer answers (1–5)")
+st.header("3) Input your customers' answers in here based on their level of agreement")
 q_val_code = likert_radio("Perceived Value", Perceived_Value)
 q_qual_code = likert_radio("Perceived Product Quality", Perceived_Product_Quality)
-q_env_code = likert_radio("Physical Environment", Physical_Environment)
 q_price_code = likert_radio("Price Sensitivity", Price_Sensitivity)
+q_env_code = likert_radio("Physical Environment", Physical_Environment)
+
 st.markdown('</div>', unsafe_allow_html=True)
 
 # build evidence (send STRING CODES ONLY)

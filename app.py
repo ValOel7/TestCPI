@@ -244,11 +244,12 @@ with col1:
     ui_gender_code = radio_mapped("Gender", Gender, horizontal=True)
     ui_age_code = radio_mapped("Age", Age, horizontal=True)
     ui_marital_code = radio_mapped("Marital Status", Marital_Status, horizontal=True)
+    ui_regular_code = radio_mapped("Customer Type", Regular_Customer, horizontal=True)
 with col2:
     ui_empstat_code = radio_mapped("Employment Status", Employment_Status, horizontal=True)
     ui_edu_code = radio_mapped("Level of Education", Level_of_Education, horizontal=True)
     ui_shopfreq_code = radio_mapped("Shopping frequency", Shopping_frequency, horizontal=False)
-    ui_regular_code = radio_mapped("Customer Type", Regular_Customer, horizontal=True)
+    
 st.markdown('</div>', unsafe_allow_html=True)
 
 # convert codes -> labels for median lookup

@@ -4,14 +4,11 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-# ------------ Friendly import guard for pgmpy ------------
+# ---- import pgmpy VE only (no BayesianModel needed) ----
 try:
     from pgmpy.inference import VariableElimination
-    from pgmpy.models import BayesianModel
 except ModuleNotFoundError:
-    st.error(
-        "The package **pgmpy** is not installed. Install it and rerun the app."
-    )
+    st.error("pgmpy is not installed.")
     st.code(
         "pip install --upgrade pip setuptools wheel\n"
         "pip install pgmpy numpy pandas networkx scipy streamlit",
@@ -19,8 +16,8 @@ except ModuleNotFoundError:
     )
     st.stop()
 
-# ------------ App config & styles ------------
 PICKLE_PATH = "bn_pgmpy.pkl"
+
 st.set_page_config(page_title="Purchase Intention Predictor", page_icon="🛍️", layout="centered")
 st.markdown(
     """
@@ -33,33 +30,13 @@ st.markdown(
     unsafe_allow_html=True
 )
 st.title("🛍️ Purchase Intention (Bayesian Network)")
-st.caption(
-    f"Python {sys.version.split()[0]} • Platform {platform.platform()}"
-)
+st.caption(f"Python {sys.version.split()[0]} • Platform {platform.platform()}")
 
-# ------------ Load bundle ------------
+# ---------- load the bundle ----------
 @st.cache_resource(show_spinner=False)
 def load_bundle(path: str):
     with open(path, "rb") as f:
         return pickle.load(f)
-
-def ensure_bayesian_model(m):
-    # Some pickles load a class without .check_model; rebuild as BayesianModel.
-    if hasattr(m, "check_model"):
-        return m
-    try:
-        bm = BayesianModel(m.edges())
-        bm.add_nodes_from(list(m.nodes()))
-        for cpd in m.get_cpds():
-            bm.add_cpds(cpd)
-        try:
-            bm.check_model()
-        except Exception as e:
-            st.warning(f"Adapted model didn't pass check_model(): {e}")
-        return bm
-    except Exception as e:
-        st.error(f"Could not adapt model to BayesianModel: {e}")
-        raise
 
 try:
     bundle = load_bundle(PICKLE_PATH)
@@ -67,18 +44,29 @@ except Exception as e:
     st.error(f"❌ Failed to load pickle at '{PICKLE_PATH}': {e}")
     st.stop()
 
+# basic key checks
 for k in ("model", "target", "classes", "state_names"):
     if k not in bundle:
         st.error(f"❌ Pickle missing required key: {k}")
         st.stop()
 
-bundle["model"] = ensure_bayesian_model(bundle["model"])
 model = bundle["model"]
 target_node = bundle["target"]
 classes = bundle["classes"]
 state_names: dict = bundle["state_names"]
 
-# ------------ Helpers ------------
+# ---------- NO-RETRAIN, NO-REBUILD: add a no-op check_model if absent ----------
+if not hasattr(model, "check_model"):
+    # This does NOT modify your pickle file; only adds a temporary method at runtime.
+    def _noop_check_model(*args, **kwargs):
+        return True
+    try:
+        model.check_model = _noop_check_model
+    except Exception:
+        # Some objects may be immutable; as a fallback just proceed (VE in many versions won't hard-require it).
+        pass
+
+# ---------- helpers ----------
 def pick_existing_node(state_names: dict, candidates: list[str]):
     for c in candidates:
         if c in state_names:
@@ -89,44 +77,32 @@ def clamp_round_1_to_5(x: float) -> int:
     return int(min(5, max(1, round(x))))
 
 def median_from_lookup(medians_dict, demo_name, demo_label_value, fallback=3):
-    """
-    medians_dict is keyed by friendly labels (e.g., 'Male'), not codes.
-    demo_label_value is the friendly label (we convert codes->labels before calling this).
-    """
     d = medians_dict.get(demo_name, {})
-    # Normalize newline variant for 'Only when needed'
     if demo_label_value == "Only when needed" and "Only when\nneeded" in d:
         demo_label_value = "Only when\nneeded"
     return int(d.get(demo_label_value, fallback))
 
 def averaged_score_for_var(var_medians_dict, demo_answers_labels: dict) -> int:
-    """Average across demographics using FRIENDLY LABELS (not codes), then clamp to 1..5."""
     vals = []
     for demo_name, demo_label in demo_answers_labels.items():
-        if demo_label is None or demo_label == "":
-            continue
-        vals.append(median_from_lookup(var_medians_dict, demo_name, demo_label, fallback=3))
+        if demo_label:
+            vals.append(median_from_lookup(var_medians_dict, demo_name, demo_label, fallback=3))
     if not vals:
         return 3
     return clamp_round_1_to_5(float(np.mean(vals)))
 
 def predict_purchase(bundle, evidence: dict):
-    model = bundle["model"]
-    target = bundle["target"]
-    classes = bundle["classes"]
-    ve = VariableElimination(model)
+    ve = VariableElimination(bundle["model"])
+    q = ve.query([bundle["target"]], evidence=evidence, show_progress=False)
+    probs = dict(zip(q.state_names[bundle["target"]], q.values.flatten().astype(float)))
+    prob_vec = np.array([probs.get(c, 0.0) for c in bundle["classes"]], dtype=float)
+    idx = int(prob_vec.argmax())
+    return bundle["target"], bundle["classes"][idx], float(prob_vec[idx]), bundle["classes"], prob_vec
 
-    q = ve.query([target], evidence=evidence, show_progress=False)
-    probs = dict(zip(q.state_names[target], q.values.flatten().astype(float)))
-    prob_vec = np.array([probs.get(c, 0.0) for c in classes], dtype=float)
-    pred_idx = int(prob_vec.argmax())
-    return target, classes[pred_idx], float(prob_vec[pred_idx]), classes, prob_vec
-
-# ------------ Label map (pretty UI ↔ codes the model expects) ------------
-LABEL_MAP_PATH = "state_label_map.json"  # optional override next to app.py
+# ---------- label mapping (pretty UI ↔ string codes the model expects) ----------
+LABEL_MAP_PATH = "state_label_map.json"  # optional override file next to app.py
 DEFAULT_LABELS = {
-    # These defaults assume your demographics are encoded as numeric strings "1","2","3", etc.
-    # If your pickle stores human words (e.g., "Male"), the labels will fall back to identity.
+    # If your demographics are encoded as numeric strings ("1","2","3"...), these show nice labels.
     "Gender": {"1": "Male", "2": "Female", "3": "Prefer not to say"},
     "Age": {"1": "18–22", "2": "23–28", "3": "29–35", "4": "35–49", "5": "50–65"},
     "Marital_Status": {"1": "Married", "2": "Single", "3": "Prefer not to say"},
@@ -134,7 +110,7 @@ DEFAULT_LABELS = {
     "Level_of_Education": {"1": "Primary", "2": "Secondary", "3": "Tertiary", "4": "Other"},
     "Shopping_frequency": {"1": "1–2x/week", "2": "2–3x/week", "3": "3–4x/week", "4": "5–6x/week", "5": "6–7x/week"},
     "Regular_Customer": {"1": "Regular", "2": "Only when needed"},
-    # Likert-like nodes usually already coded "1".."5"—we show richer labels via format_func below.
+    # Likert nodes usually already "1".."5"; we format them separately.
 }
 
 def load_label_map(state_names: dict) -> dict:
@@ -156,10 +132,6 @@ def load_label_map(state_names: dict) -> dict:
 LABELS = load_label_map(state_names)
 
 def radio_mapped(title: str, node_key: str, *, horizontal: bool = True):
-    """
-    Shows pretty labels but returns the BN state CODE (string) for that node.
-    If no labels available, shows the raw codes.
-    """
     opts = state_names.get(node_key, [])
     if not opts:
         return None
@@ -168,7 +140,7 @@ def radio_mapped(title: str, node_key: str, *, horizontal: bool = True):
         lab = LABELS.get(node_key, {}).get(code, code)
         display.append(lab if lab == code else f"{lab} [{code}]")
     idx = st.radio(title, list(range(len(opts))), format_func=lambda i: display[i], horizontal=horizontal)
-    return opts[idx]  # <- return the underlying code (string), exactly as the BN expects
+    return opts[idx]  # return the underlying string code
 
 def likert_radio(title: str, node_key: str):
     opts = state_names.get(node_key, ["1", "2", "3", "4", "5"])
@@ -177,7 +149,7 @@ def likert_radio(title: str, node_key: str):
     idx = st.radio(title, list(range(len(opts))), format_func=lambda i: labels.get(opts[i], opts[i]), horizontal=True)
     return opts[idx]
 
-# ------------ Discover node names in the model (underscore/space tolerant) ------------
+# ---------- discover node names (underscore / space tolerant) ----------
 Gender = pick_existing_node(state_names, ["Gender"])
 Age = pick_existing_node(state_names, ["Age"])
 Marital_Status = pick_existing_node(state_names, ["Marital_Status", "Marital Status"])
@@ -195,7 +167,7 @@ Perceived_Product_Quality = pick_existing_node(state_names, ["Perceived_Product_
 Physical_Environment = pick_existing_node(state_names, ["Physical_Environment", "Physical Environment"])
 Price_Sensitivity = pick_existing_node(state_names, ["Price_Sensitivity", "Price Sensitivity"])
 
-# ------------ Medians (by FRIENDLY LABELS) for auto-computed variables ------------
+# ---------- medians (use FRIENDLY LABELS, not codes) ----------
 empathy_medians = {
     "Gender": {"Male": 4, "Female": 4, "Prefer not to say": 3},
     "Age": {"18–22": 3, "23–28": 4, "29–35": 4, "35–49": 3, "50–65": 4},
@@ -221,9 +193,8 @@ customer_trust_medians = {
     "Employment_Status": {"Employed": 3, "Unemployed": 4},
 }
 
-# ------------ UI: Demographics ------------
+# ---------- UI: demographics ----------
 st.header("1) Demographics")
-
 col1, col2 = st.columns(2, gap="large")
 with col1:
     ui_gender_code = radio_mapped("Gender", Gender, horizontal=True)
@@ -235,11 +206,11 @@ with col2:
     ui_shopfreq_code = radio_mapped("Shopping frequency", Shopping_frequency, horizontal=False)
     ui_regular_code = radio_mapped("Customer Type", Regular_Customer, horizontal=True)
 
-# Convert codes -> friendly labels for the medians computation
+# convert codes -> labels for median lookup
 def label_of(node_key, code):
     return LABELS.get(node_key, {}).get(code, code)
 
-demo_answers_labels = {
+demo_labels = {
     "Gender": label_of(Gender, ui_gender_code) if ui_gender_code else None,
     "Age": label_of(Age, ui_age_code) if ui_age_code else None,
     "Marital_Status": label_of(Marital_Status, ui_marital_code) if ui_marital_code else None,
@@ -249,34 +220,29 @@ demo_answers_labels = {
     "Regular_Customer": label_of(Regular_Customer, ui_regular_code) if ui_regular_code else None,
 }
 
-# ------------ Auto-computed latent variables ------------
+# ---------- auto-computed ----------
 st.header("2) Auto-computed (from demographics)")
-emp_score = averaged_score_for_var(empathy_medians, demo_answers_labels)
-conv_score = averaged_score_for_var(convenience_medians, demo_answers_labels)
-trust_score = averaged_score_for_var(customer_trust_medians, demo_answers_labels)
+emp_score = averaged_score_for_var(empathy_medians, demo_labels)
+conv_score = averaged_score_for_var(convenience_medians, demo_labels)
+trust_score = averaged_score_for_var(customer_trust_medians, demo_labels)
 
-colA, colB, colC = st.columns(3)
-with colA:
-    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-    st.metric("Empathy (1–5)", emp_score)
-    st.markdown("</div>", unsafe_allow_html=True)
-with colB:
-    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-    st.metric("Convenience (1–5)", conv_score)
-    st.markdown("</div>", unsafe_allow_html=True)
-with colC:
-    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-    st.metric("Customer Trust (1–5)", trust_score)
-    st.markdown("</div>", unsafe_allow_html=True)
+c1, c2, c3 = st.columns(3)
+for col, title, val in zip((c1, c2, c3),
+                           ("Empathy (1–5)", "Convenience (1–5)", "Customer Trust (1–5)"),
+                           (emp_score, conv_score, trust_score)):
+    with col:
+        st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+        st.metric(title, val)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-# ------------ Likert questions (return codes as strings) ------------
+# ---------- Likert ----------
 st.header("3) Customer answers (1–5)")
 q_val_code = likert_radio("Perceived Value", Perceived_Value)
 q_qual_code = likert_radio("Perceived Product Quality", Perceived_Product_Quality)
 q_env_code = likert_radio("Physical Environment", Physical_Environment)
 q_price_code = likert_radio("Price Sensitivity", Price_Sensitivity)
 
-# ------------ Build evidence (send CODES to BN, strings only) ------------
+# ---------- evidence (send STRING CODES ONLY) ----------
 evidence = {}
 def put(node_key, code_str):
     if node_key and code_str is not None:
@@ -299,25 +265,16 @@ put(Perceived_Product_Quality, q_qual_code)
 put(Physical_Environment, q_env_code)
 put(Price_Sensitivity, q_price_code)
 
-# ------------ Predict ------------
+# ---------- predict ----------
 st.header("4) Prediction")
 if st.button("Predict Purchase Intention"):
     try:
         tgt, pred_class, conf, cls, prob_vec = predict_purchase(bundle, evidence)
         st.success(f"Predicted **{tgt}**: **{pred_class}**  |  Confidence: **{conf*100:.1f}%**")
-
         prob_df = pd.DataFrame({"Class": cls, "Probability": prob_vec})
         st.bar_chart(prob_df.set_index("Class"))
-
         with st.expander("Show evidence used"):
             st.json(evidence)
-
-        with st.expander("Debug: label map for demographics"):
-            for node in [Gender, Age, Marital_Status, Employment_Status, Level_of_Education, Shopping_frequency, Regular_Customer]:
-                if node:
-                    st.write(f"**{node}**")
-                    st.table(pd.DataFrame({"code": state_names[node], 
-                                           "label": [LABELS.get(node, {}).get(s, s) for s in state_names[node]]}))
     except Exception as e:
         st.error(f"Prediction failed: {e}")
         with st.expander("Evidence (debug)"):

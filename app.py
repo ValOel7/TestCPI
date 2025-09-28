@@ -4,23 +4,14 @@ import pandas as pd
 import streamlit as st
 from pgmpy.inference import VariableElimination
 
-# -----------------------------
-# CONFIG: file path to your pickle bundle (model + metadata)
-# -----------------------------
-PICKLE_PATH = "bn_pgmpy.pkl"   # <-- change if needed
+PICKLE_PATH = "bn_pgmpy.pkl"   
 
-# -----------------------------
 # YOUR LOOKUP TABLES (medians)
 # NOTE: These are used ONLY to compute the biased defaults for:
 #   - Empathy
 #   - Convenience
 #   - Customer Trust
 # by averaging all 7 demographics (if present) and rounding to 1..5.
-# If a demographic dimension is missing in a dict, it’s just skipped.
-# -----------------------------
-
-# If you have an Empathy-by-demographics table from your violin analysis,
-# paste it here. Otherwise we'll fall back to a neutral "3" per demographic.
 empathy_medians = {
     "Gender": {"Male": 4, "Female": 4, "Prefer not to say": 3},
     "Age": {"18-22": 3, "23-28": 4, "29-35": 4, "35-49": 3, "50-65": 4},
@@ -29,9 +20,6 @@ empathy_medians = {
     "Regular Customer": {"Regular": 4, "Only when\nneeded": 3},
     "Employment Status": {"Employed": 4, "Unemployed": 4}
 }
-# Fallback: if empathy_medians is empty or missing a demographic/category,
-# we'll substitute "3" for that item.
-
 convenience_medians = {
     "Gender": {"Male": 4, "Female": 4, "Prefer not to say": 3},
     "Age": {"18-22": 3, "23-28": 4, "29-35": 4, "35-49": 4, "50-65": 4},
@@ -52,37 +40,6 @@ customer_trust_medians = {
     # "Level of Education": {...}
 }
 
-# Optional: if you ever want to default the 4 asked variables by demographics,
-# you already have these (but in this app we take the user's explicit answers):
-perceived_value_medians = {
-    "Gender": {"Male": 3, "Female": 3, "Prefer not to say": 3},
-    "Age": {"18-22": 2, "23-28": 3, "29-35": 3, "35-49": 4, "50-65": 4},
-    "Marital Status": {"Married": 3, "Single": 3, "Prefer not to say": 2},
-    "Shopping frequency": {"1-2x/week": 3, "2-3x/week": 3, "3-4x/week": 4, "5-6x/week": 4, "6-7x/week": 2},
-    "Regular Customer": {"Regular": 4, "Only when\nneeded": 3},
-    "Employment Status": {"Employed": 3, "Unemployed": 3},
-}
-price_sensitivity_medians = {
-    "Gender": {"Male": 3, "Female": 3, "Prefer not to say": 3},
-    "Age": {"18-22": 2, "23-28": 3, "29-35": 3, "35-49": 4, "50-65": 4},
-    "Marital Status": {"Married": 3, "Single": 3, "Prefer not to say": 3},
-    "Shopping frequency": {"1-2x/week": 3, "2-3x/week": 3, "3-4x/week": 4, "5-6x/week": 4, "6-7x/week": 2},
-    "Regular Customer": {"Regular": 3, "Only when\nneeded": 3},
-    "Employment Status": {"Employed": 3, "Unemployed": 3},
-}
-perceived_product_quality_medians = {
-    "Gender": {"Male": 3, "Female": 4, "Prefer not to say": 3},
-    "Age": {"18-22": 3, "23-28": 4, "29-35": 4, "35-49": 4, "50-65": 4},
-    "Marital Status": {"Married": 4, "Single": 4, "Prefer not to say": 3},
-    "Shopping frequency": {"1-2x/week": 3, "2-3x/week": 4, "3-4x/week": 4, "5-6x/week": 4, "6-7x/week": 3},
-    "Regular Customer": {"Regular": 4, "Only when\nneeded": 3},
-    "Employment Status": {"Employed": 4, "Unemployed": 3},
-}
-
-# -----------------------------
-# HELPERS
-# -----------------------------
-@st.cache_resource
 def load_bundle(path: str):
     with open(path, "rb") as f:
         b = pickle.load(f)
@@ -102,7 +59,7 @@ def median_from_lookup(medians_dict, demo_name, demo_value, fallback=3):
     return int(d.get(demo_value, fallback))
 
 def averaged_score_for_var(var_medians_dict, demo_answers: dict) -> int:
-    """Average across up to 7 demographics, round to 1..5. Missing dims are skipped."""
+    """Average across up to 7 demographics, round to 1..5"""
     vals = []
     for demo_name, demo_value in demo_answers.items():
         if demo_value is None or demo_value == "":
@@ -138,9 +95,9 @@ def predict_purchase(bundle, evidence: dict):
 # -----------------------------
 # UI
 # -----------------------------
-st.set_page_config(page_title="Purchase Intention Predictor", page_icon="🧠", layout="centered")
+st.set_page_config(page_title="Purchase Intention Predictor", page_icon="🛍️", layout="centered")
 st.title("Purchase Intention (Bayesian Network)")
-st.caption("Enter demographics and four answers (1–5). The app computes Empathy, Convenience, and Customer Trust from demographics, then predicts Purchase Intention.")
+st.caption("Enter demographics and the answers to the four underlying questions based on a scale of 1–5. The app computes Empathy, Convenience, and Customer Trust from demographics, then predicts Purchase Intention.")
 
 # Load model
 bundle = load_bundle(PICKLE_PATH)
@@ -150,23 +107,23 @@ TARGET = bundle["target"]
 st.header("1) Demographics")
 col1, col2 = st.columns(2)
 with col1:
-    gender = st.radio("Gender", ["Male", "Female", "Prefer not to say"], horizontal=True)
-    age = st.radio("Age", ["18-22", "23-28", "29-35", "35-49", "50-65"], horizontal=True)
-    marital = st.radio("Marital Status", ["Married", "Single", "Prefer not to say"], horizontal=True)
+    Gender = st.radio("Gender", ["Male", "Female", "Prefer not to say"], horizontal=True)
+    Age = st.radio("Age", ["18-22", "23-28", "29-35", "35-49", "50-65"], horizontal=True)
+    Marital Status = st.radio("Marital Status", ["Married", "Single", "Prefer not to say"], horizontal=True)
 with col2:
-    emp_status = st.radio("Employment Status", ["Employed", "Unemployed"], horizontal=True)
-    edu = st.radio("Level of Education", ["Primary", "Secondary", "Tertiary", "Other"], horizontal=True)
-    shop_freq = st.radio("Shopping frequency", ["1-2x/week", "2-3x/week", "3-4x/week", "5-6x/week", "6-7x/week"], horizontal=False)
-reg_cust = st.radio('Customer Type', ["Regular", "Only when needed"], horizontal=True)
+    Employee Status = st.radio("Employment Status", ["Employed", "Unemployed"], horizontal=True)
+    Level of Education = st.radio("Level of Education", ["Primary", "Secondary", "Tertiary", "Other"], horizontal=True)
+    Shopping frequency = st.radio("Shopping frequency", ["1-2x/week", "2-3x/week", "3-4x/week", "5-6x/week", "6-7x/week"], horizontal=False)
+    Regular Customer = st.radio('Customer Type', ["Regular", "Only when needed"], horizontal=True)
 
 demo_answers = {
-    "Gender": gender,
-    "Age": age,
-    "Marital Status": marital,
-    "Employment Status": emp_status,
-    "Level of Education": edu,
-    "Shopping frequency": shop_freq,
-    "Regular Customer": reg_cust,
+    "Gender": Gender,
+    "Age": Age,
+    "Marital Status": Marital Status,
+    "Employment Status": Employee Status,
+    "Level of Education": Level of Education,
+    "Shopping frequency": Shopping frequency,
+    "Regular Customer": Regular Customer,
 }
 
 # Compute the 3 biased variables from demographics
@@ -201,13 +158,13 @@ q4 = st.radio("Price Sensitivity", LIKERT_OPTS, format_func=lambda x: LIKERT_LAB
 # IMPORTANT: variable names must match the BN node names in your training data.
 evidence = {
     # demographics
-    "Gender": gender,
-    "Age": age,
-    "Marital Status": marital,
-    "Employment Status": emp_status,
-    "Level of Education": edu,
-    "Shopping frequency": shop_freq,
-    "Regular Customer": "Only when\nneeded" if reg_cust == "Only when needed" else reg_cust,
+    "Gender": Gender,
+    "Age": Age,
+    "Marital Status": Marital Status,
+    "Employment Status": Employee Status,
+    "Level of Education": Level of Education,
+    "Shopping frequency": Shopping frequency,
+    "Regular Customer": "Only when\nneeded" if Regular Customer == "Only when needed" else Regular Customer,
 
     # three biased vars (as strings)
     "Empathy": str(emp_score),

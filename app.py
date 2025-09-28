@@ -3,7 +3,6 @@ import streamlit as st
 import pickle
 import numpy as np
 import pandas as pd
-from pgmpy.inference import VariableElimination
 
 PICKLE_PATH = "bn_pgmpy.pkl"   
 

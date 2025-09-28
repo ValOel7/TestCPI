@@ -30,6 +30,7 @@ with col2:
 # Load the trained model
 with open('bn_pgmpy.pkl', 'rb') as file:
     model = pickle.load(file)
+    
 TARGET = bundle["target"]
 
 demo_answers = {

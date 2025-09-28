@@ -19,7 +19,7 @@ except ModuleNotFoundError:
 PICKLE_PATH = "bn_pgmpy.pkl"
 
 # ---------- Page + styles ----------
-st.set_page_config(page_title="Purchase Intention Predictor", page_icon="🛍️", layout="centered")
+st.set_page_config(page_title="Purchase Intention Real-Time Assistant", page_icon="🛍️", layout="centered")
 st.markdown(
     """
     <style>

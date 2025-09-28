@@ -28,8 +28,8 @@ with col2:
     Shopping_frequency = st.radio("Shopping frequency", ["1-2x/week", "2-3x/week", "3-4x/week", "5-6x/week", "6-7x/week"], horizontal=False)
 
 # Load the trained model
-with open('bn_pgmpy.pkl', 'rb') as file:
-    model = pickle.load(file)
+#with open('bn_pgmpy.pkl', 'rb') as file:
+ #   model = pickle.load(file)
     
 TARGET = bundle["target"]
 

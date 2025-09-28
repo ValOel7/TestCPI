@@ -21,8 +21,9 @@ with col1:
     Gender = st.radio("Gender", ["Male", "Female", "Prefer not to say"], horizontal=True)
     Age = st.radio("Age", ["18-22", "23-28", "29-35", "35-49", "50-65"], horizontal=True)
     Marital_Status = st.radio("Marital Status", ["Married", "Single", "Prefer not to say"], horizontal=True)
+    Regular_Customer = st.radio('Customer Type', ["Regular", "Only when needed"], horizontal=True)
 with col2:
     Employee_Status = st.radio("Employment Status", ["Employed", "Unemployed"], horizontal=True)
     Level_of_Education = st.radio("Level of Education", ["Primary", "Secondary", "Tertiary", "Other"], horizontal=True)
     Shopping_frequency = st.radio("Shopping frequency", ["1-2x/week", "2-3x/week", "3-4x/week", "5-6x/week", "6-7x/week"], horizontal=False)
-    Regular_Customer = st.radio('Customer Type', ["Regular", "Only when needed"], horizontal=True)
+

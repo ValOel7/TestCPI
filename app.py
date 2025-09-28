@@ -1,4 +1,4 @@
-!pip install -q streamlit
+pip install -q streamlit
 import streamlit as st
 import pickle
 import numpy as np

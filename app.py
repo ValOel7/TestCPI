@@ -339,12 +339,6 @@ if st.button("Predict Purchase Intention", type="primary"):
         prob_df = pd.DataFrame({"Class": [pretty_class(c) for c in cls], "Probability": prob_vec}).sort_values("Probability", ascending=False)
         st.dataframe(prob_df.style.format({"Probability": "{:.3f}"}), use_container_width=True, hide_index=True)
 
-        show_chart = st.checkbox("Show class probability chart", value=False)
-        if show_chart:
-            st.bar_chart(prob_df.set_index("Class"))
-
-        with st.expander("Show evidence used"):
-            st.json(evidence)
 
     except Exception as e:
         st.error(f"Prediction failed: {e}")

@@ -231,4 +231,94 @@ with col1:
     ui_marital_code = radio_mapped("Marital Status", Marital_Status, horizontal=True)
 with col2:
     ui_empstat_code = radio_mapped("Employment Status", Employment_Status, horizontal=True)
-    ui_edu_code = radio_mapped("Level of Education", Level_of_Education, hori_
+    ui_edu_code = radio_mapped("Level of Education", Level_of_Education, horizontal=True)
+    ui_shopfreq_code = radio_mapped("Shopping frequency", Shopping_frequency, horizontal=False)
+    ui_regular_code = radio_mapped("Customer Type", Regular_Customer, horizontal=True)
+
+# Convert codes -> friendly labels for the medians computation
+def label_of(node_key, code):
+    return LABELS.get(node_key, {}).get(code, code)
+
+demo_answers_labels = {
+    "Gender": label_of(Gender, ui_gender_code) if ui_gender_code else None,
+    "Age": label_of(Age, ui_age_code) if ui_age_code else None,
+    "Marital_Status": label_of(Marital_Status, ui_marital_code) if ui_marital_code else None,
+    "Employment_Status": label_of(Employment_Status, ui_empstat_code) if ui_empstat_code else None,
+    "Level_of_Education": label_of(Level_of_Education, ui_edu_code) if ui_edu_code else None,
+    "Shopping_frequency": label_of(Shopping_frequency, ui_shopfreq_code) if ui_shopfreq_code else None,
+    "Regular_Customer": label_of(Regular_Customer, ui_regular_code) if ui_regular_code else None,
+}
+
+# ------------ Auto-computed latent variables ------------
+st.header("2) Auto-computed (from demographics)")
+emp_score = averaged_score_for_var(empathy_medians, demo_answers_labels)
+conv_score = averaged_score_for_var(convenience_medians, demo_answers_labels)
+trust_score = averaged_score_for_var(customer_trust_medians, demo_answers_labels)
+
+colA, colB, colC = st.columns(3)
+with colA:
+    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+    st.metric("Empathy (1–5)", emp_score)
+    st.markdown("</div>", unsafe_allow_html=True)
+with colB:
+    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+    st.metric("Convenience (1–5)", conv_score)
+    st.markdown("</div>", unsafe_allow_html=True)
+with colC:
+    st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+    st.metric("Customer Trust (1–5)", trust_score)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ------------ Likert questions (return codes as strings) ------------
+st.header("3) Customer answers (1–5)")
+q_val_code = likert_radio("Perceived Value", Perceived_Value)
+q_qual_code = likert_radio("Perceived Product Quality", Perceived_Product_Quality)
+q_env_code = likert_radio("Physical Environment", Physical_Environment)
+q_price_code = likert_radio("Price Sensitivity", Price_Sensitivity)
+
+# ------------ Build evidence (send CODES to BN, strings only) ------------
+evidence = {}
+def put(node_key, code_str):
+    if node_key and code_str is not None:
+        evidence[node_key] = str(code_str)
+
+put(Gender, ui_gender_code)
+put(Age, ui_age_code)
+put(Marital_Status, ui_marital_code)
+put(Employment_Status, ui_empstat_code)
+put(Level_of_Education, ui_edu_code)
+put(Shopping_frequency, ui_shopfreq_code)
+put(Regular_Customer, ui_regular_code)
+
+put(Empathy, str(emp_score))
+put(Convenience, str(conv_score))
+put(Customer_Trust, str(trust_score))
+
+put(Perceived_Value, q_val_code)
+put(Perceived_Product_Quality, q_qual_code)
+put(Physical_Environment, q_env_code)
+put(Price_Sensitivity, q_price_code)
+
+# ------------ Predict ------------
+st.header("4) Prediction")
+if st.button("Predict Purchase Intention"):
+    try:
+        tgt, pred_class, conf, cls, prob_vec = predict_purchase(bundle, evidence)
+        st.success(f"Predicted **{tgt}**: **{pred_class}**  |  Confidence: **{conf*100:.1f}%**")
+
+        prob_df = pd.DataFrame({"Class": cls, "Probability": prob_vec})
+        st.bar_chart(prob_df.set_index("Class"))
+
+        with st.expander("Show evidence used"):
+            st.json(evidence)
+
+        with st.expander("Debug: label map for demographics"):
+            for node in [Gender, Age, Marital_Status, Employment_Status, Level_of_Education, Shopping_frequency, Regular_Customer]:
+                if node:
+                    st.write(f"**{node}**")
+                    st.table(pd.DataFrame({"code": state_names[node], 
+                                           "label": [LABELS.get(node, {}).get(s, s) for s in state_names[node]]}))
+    except Exception as e:
+        st.error(f"Prediction failed: {e}")
+        with st.expander("Evidence (debug)"):
+            st.json(evidence)

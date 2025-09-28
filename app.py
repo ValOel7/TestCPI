@@ -38,7 +38,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-st.title("🛍️ Purchase Intention (Bayesian Network)")
+st.title("🛍️ Purchase Intention Real-Time Assistant")
 
 
 # ---------- load the bundle ----------

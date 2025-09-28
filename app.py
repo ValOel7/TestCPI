@@ -18,17 +18,26 @@ except ModuleNotFoundError:
 
 PICKLE_PATH = "bn_pgmpy.pkl"
 
+# ---------- Page + styles ----------
 st.set_page_config(page_title="Purchase Intention Predictor", page_icon="🛍️", layout="centered")
 st.markdown(
     """
     <style>
-      .block-container {max-width: 1050px;}
-      .metric-card {background: #f8f9fb; padding: 12px 16px; border-radius: 14px; border: 1px solid #eef0f4;}
-      .stRadio > label {font-weight: 600;}
+      :root { --accent:#2563eb; }
+      .block-container {max-width: 980px;}
+      h1, .stMarkdown h1 { letter-spacing: -0.3px; }
+      h2, .stMarkdown h2 { margin-top: 0.25rem; }
+      .section { background:#fbfcfe; border:1px solid #eef0f4; border-radius:14px; padding:18px 18px 12px; margin: 14px 0 10px; }
+      .section h2 { margin: 0 0 14px 0; }
+      .metric-card {background:#f8f9fb; padding:12px 16px; border-radius:14px; border:1px solid #eef0f4;}
+      .stRadio > label {font-weight:600;}
+      .st-emotion-cache-16idsys p { margin-bottom: 0.35rem; } /* tighten labels */
+      input[type="radio"]:checked { accent-color: var(--accent); }
     </style>
     """,
     unsafe_allow_html=True
 )
+
 st.title("🛍️ Purchase Intention (Bayesian Network)")
 st.caption(f"Python {sys.version.split()[0]} • Platform {platform.platform()}")
 
@@ -53,24 +62,44 @@ for k in ("model", "target", "classes", "state_names"):
 model = bundle["model"]
 target_node = bundle["target"]
 classes = bundle["classes"]
-state_names: dict = bundle["state_names"]
+state_names = bundle["state_names"]  # typically: dict node -> list of states
 
-# ---------- NO-RETRAIN, NO-REBUILD: add a no-op check_model if absent ----------
+# ---------- NO-RETRAIN, NO-REBUILD: lightweight pgmpy shims ----------
+# 1) Some VE versions call model.check_model()
 if not hasattr(model, "check_model"):
-    # This does NOT modify your pickle file; only adds a temporary method at runtime.
     def _noop_check_model(*args, **kwargs):
         return True
     try:
         model.check_model = _noop_check_model
     except Exception:
-        # Some objects may be immutable; as a fallback just proceed (VE in many versions won't hard-require it).
+        pass
+
+# 2) Some VE versions expect model.factors; derive from CPDs if missing
+if not hasattr(model, "factors"):
+    try:
+        cpds = model.get_cpds()
+    except Exception:
+        cpds = []
+    factors = []
+    for cpd in cpds:
+        tf = getattr(cpd, "to_factor", None)
+        if callable(tf):
+            try:
+                factors.append(tf()); continue
+            except Exception:
+                pass
+        factors.append(cpd)
+    try:
+        model.factors = factors
+    except Exception:
         pass
 
 # ---------- helpers ----------
-def pick_existing_node(state_names: dict, candidates: list[str]):
-    for c in candidates:
-        if c in state_names:
-            return c
+def pick_existing_node(state_names_dict, candidates: list[str]):
+    if isinstance(state_names_dict, dict):
+        for c in candidates:
+            if c in state_names_dict:
+                return c
     return None
 
 def clamp_round_1_to_5(x: float) -> int:
@@ -91,33 +120,37 @@ def averaged_score_for_var(var_medians_dict, demo_answers_labels: dict) -> int:
         return 3
     return clamp_round_1_to_5(float(np.mean(vals)))
 
-def predict_purchase(bundle, evidence: dict):
-    ve = VariableElimination(bundle["model"])
-    q = ve.query([bundle["target"]], evidence=evidence, show_progress=False)
-    probs = dict(zip(q.state_names[bundle["target"]], q.values.flatten().astype(float)))
-    prob_vec = np.array([probs.get(c, 0.0) for c in bundle["classes"]], dtype=float)
+def predict_purchase(bundle_obj, evidence: dict):
+    ve = VariableElimination(bundle_obj["model"])
+    q = ve.query([bundle_obj["target"]], evidence=evidence, show_progress=False)
+    probs = dict(zip(q.state_names[bundle_obj["target"]], q.values.flatten().astype(float)))
+    prob_vec = np.array([probs.get(c, 0.0) for c in bundle_obj["classes"]], dtype=float)
     idx = int(prob_vec.argmax())
-    return bundle["target"], bundle["classes"][idx], float(prob_vec[idx]), bundle["classes"], prob_vec
+    return bundle_obj["target"], bundle_obj["classes"][idx], float(prob_vec[idx]), bundle_obj["classes"], prob_vec
 
 # ---------- label mapping (pretty UI ↔ string codes the model expects) ----------
-LABEL_MAP_PATH = "state_label_map.json"  # optional override file next to app.py
+LABEL_MAP_PATH = "state_label_map.json"  # optional override
 DEFAULT_LABELS = {
-    # If your demographics are encoded as numeric strings ("1","2","3"...), these show nice labels.
     "Gender": {"1": "Male", "2": "Female", "3": "Prefer not to say"},
     "Age": {"1": "18–22", "2": "23–28", "3": "29–35", "4": "35–49", "5": "50–65"},
     "Marital_Status": {"1": "Married", "2": "Single", "3": "Prefer not to say"},
-    "Employment_Status": {"1": "Employed", "2": "Unemployed"},
-    "Level_of_Education": {"1": "Primary", "2": "Secondary", "3": "Tertiary", "4": "Other"},
+    "Employment_Status": {"1": "Employed", "2": "Unemployed", 1: "Employed", 2: "Unemployed"},
+    # Updated per your training mapping (include string and int keys, just in case)
+    "Level_of_Education": {
+        "1": "No formal", "2": "Basic", "3": "Diploma", "4": "Degree", "5": "Postgrad",
+        1: "No formal", 2: "Basic", 3: "Diploma", 4: "Degree", 5: "Postgrad",
+    },
     "Shopping_frequency": {"1": "1–2x/week", "2": "2–3x/week", "3": "3–4x/week", "4": "5–6x/week", "5": "6–7x/week"},
     "Regular_Customer": {"1": "Regular", "2": "Only when needed"},
-    # Likert nodes usually already "1".."5"; we format them separately.
+    # Likert nodes already "1".."5"; formatted separately.
 }
 
-def load_label_map(state_names: dict) -> dict:
+def load_label_map(state_names_dict) -> dict:
     labels = {}
-    for node, states in state_names.items():
-        base = DEFAULT_LABELS.get(node, {})
-        labels[node] = {s: base.get(s, s) for s in states}  # identity fallback
+    if isinstance(state_names_dict, dict):
+        for node, states in state_names_dict.items():
+            base = DEFAULT_LABELS.get(node, {})
+            labels[node] = {s: base.get(s, s) for s in states}  # identity fallback
     if os.path.exists(LABEL_MAP_PATH):
         try:
             with open(LABEL_MAP_PATH, "r", encoding="utf-8") as f:
@@ -132,21 +165,24 @@ def load_label_map(state_names: dict) -> dict:
 LABELS = load_label_map(state_names)
 
 def radio_mapped(title: str, node_key: str, *, horizontal: bool = True):
-    opts = state_names.get(node_key, [])
+    """Show pretty labels only; return the underlying BN state code (string)."""
+    opts = state_names.get(node_key, []) if isinstance(state_names, dict) else []
     if not opts:
         return None
-    display = []
-    for code in opts:
-        lab = LABELS.get(node_key, {}).get(code, code)
-        display.append(lab if lab == code else f"{lab} [{code}]")
-    idx = st.radio(title, list(range(len(opts))), format_func=lambda i: display[i], horizontal=horizontal)
-    return opts[idx]  # return the underlying string code
+    pretty = [LABELS.get(node_key, {}).get(code, code) for code in opts]
+    idx = st.radio(title, list(range(len(opts))), format_func=lambda i: pretty[i], horizontal=horizontal)
+    return opts[idx]  # underlying string code
 
 def likert_radio(title: str, node_key: str):
-    opts = state_names.get(node_key, ["1", "2", "3", "4", "5"])
-    labels = {"1": "1 = Strongly disagree", "2": "2 = Disagree", "3": "3 = Indifferent",
-              "4": "4 = Agree", "5": "5 = Strongly agree"}
-    idx = st.radio(title, list(range(len(opts))), format_func=lambda i: labels.get(opts[i], opts[i]), horizontal=True)
+    opts = state_names.get(node_key, ["1", "2", "3", "4", "5"]) if isinstance(state_names, dict) else ["1","2","3","4","5"]
+    pretty = {
+        "1": "1 = Strongly disagree",
+        "2": "2 = Disagree",
+        "3": "3 = Indifferent",
+        "4": "4 = Agree",
+        "5": "5 = Strongly agree",
+    }
+    idx = st.radio(title, list(range(len(opts))), format_func=lambda i: pretty.get(opts[i], opts[i]), horizontal=True)
     return opts[idx]
 
 # ---------- discover node names (underscore / space tolerant) ----------
@@ -168,6 +204,7 @@ Physical_Environment = pick_existing_node(state_names, ["Physical_Environment", 
 Price_Sensitivity = pick_existing_node(state_names, ["Price_Sensitivity", "Price Sensitivity"])
 
 # ---------- medians (use FRIENDLY LABELS, not codes) ----------
+# You can tune these if you have empirical medians by segment.
 empathy_medians = {
     "Gender": {"Male": 4, "Female": 4, "Prefer not to say": 3},
     "Age": {"18–22": 3, "23–28": 4, "29–35": 4, "35–49": 3, "50–65": 4},
@@ -175,6 +212,8 @@ empathy_medians = {
     "Shopping_frequency": {"1–2x/week": 3, "2–3x/week": 4, "3–4x/week": 4, "5–6x/week": 4, "6–7x/week": 4},
     "Regular_Customer": {"Regular": 4, "Only when\nneeded": 3, "Only when needed": 3},
     "Employment_Status": {"Employed": 4, "Unemployed": 4},
+    # If you want Level_of_Education to influence these, add values like below:
+    # "Level_of_Education": {"No formal": 3, "Basic": 3, "Diploma": 4, "Degree": 4, "Postgrad": 4},
 }
 convenience_medians = {
     "Gender": {"Male": 4, "Female": 4, "Prefer not to say": 3},
@@ -183,6 +222,7 @@ convenience_medians = {
     "Shopping_frequency": {"1–2x/week": 4, "2–3x/week": 4, "3–4x/week": 5, "5–6x/week": 5, "6–7x/week": 2},
     "Regular_Customer": {"Regular": 4, "Only when\nneeded": 3, "Only when needed": 3},
     "Employment_Status": {"Employed": 4, "Unemployed": 4},
+    # "Level_of_Education": {"No formal": 3, "Basic": 3, "Diploma": 4, "Degree": 4, "Postgrad": 4},
 }
 customer_trust_medians = {
     "Gender": {"Male": 4, "Female": 3, "Prefer not to say": 3},
@@ -191,9 +231,13 @@ customer_trust_medians = {
     "Shopping_frequency": {"1–2x/week": 3, "2–3x/week": 4, "3–4x/week": 3, "5–6x/week": 5, "6–7x/week": 3},
     "Regular_Customer": {"Regular": 4, "Only when\nneeded": 3, "Only when needed": 3},
     "Employment_Status": {"Employed": 3, "Unemployed": 4},
+    # "Level_of_Education": {"No formal": 3, "Basic": 3, "Diploma": 4, "Degree": 4, "Postgrad": 4},
 }
 
-# ---------- UI: demographics ----------
+# =========================================================
+# 1) DEMOGRAPHICS
+# =========================================================
+st.markdown('<div class="section">', unsafe_allow_html=True)
 st.header("1) Demographics")
 col1, col2 = st.columns(2, gap="large")
 with col1:
@@ -205,6 +249,7 @@ with col2:
     ui_edu_code = radio_mapped("Level of Education", Level_of_Education, horizontal=True)
     ui_shopfreq_code = radio_mapped("Shopping frequency", Shopping_frequency, horizontal=False)
     ui_regular_code = radio_mapped("Customer Type", Regular_Customer, horizontal=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
 # convert codes -> labels for median lookup
 def label_of(node_key, code):
@@ -220,7 +265,10 @@ demo_labels = {
     "Regular_Customer": label_of(Regular_Customer, ui_regular_code) if ui_regular_code else None,
 }
 
-# ---------- auto-computed ----------
+# =========================================================
+# 2) AUTO-COMPUTED
+# =========================================================
+st.markdown('<div class="section">', unsafe_allow_html=True)
 st.header("2) Auto-computed (from demographics)")
 emp_score = averaged_score_for_var(empathy_medians, demo_labels)
 conv_score = averaged_score_for_var(convenience_medians, demo_labels)
@@ -234,15 +282,20 @@ for col, title, val in zip((c1, c2, c3),
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric(title, val)
         st.markdown("</div>", unsafe_allow_html=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------- Likert ----------
+# =========================================================
+# 3) CUSTOMER ANSWERS
+# =========================================================
+st.markdown('<div class="section">', unsafe_allow_html=True)
 st.header("3) Customer answers (1–5)")
 q_val_code = likert_radio("Perceived Value", Perceived_Value)
 q_qual_code = likert_radio("Perceived Product Quality", Perceived_Product_Quality)
 q_env_code = likert_radio("Physical Environment", Physical_Environment)
 q_price_code = likert_radio("Price Sensitivity", Price_Sensitivity)
+st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------- evidence (send STRING CODES ONLY) ----------
+# build evidence (send STRING CODES ONLY)
 evidence = {}
 def put(node_key, code_str):
     if node_key and code_str is not None:
@@ -265,17 +318,37 @@ put(Perceived_Product_Quality, q_qual_code)
 put(Physical_Environment, q_env_code)
 put(Price_Sensitivity, q_price_code)
 
-# ---------- predict ----------
+# =========================================================
+# 4) PREDICTION
+# =========================================================
+st.markdown('<div class="section">', unsafe_allow_html=True)
 st.header("4) Prediction")
-if st.button("Predict Purchase Intention"):
+
+if st.button("Predict Purchase Intention", type="primary"):
     try:
         tgt, pred_class, conf, cls, prob_vec = predict_purchase(bundle, evidence)
-        st.success(f"Predicted **{tgt}**: **{pred_class}**  |  Confidence: **{conf*100:.1f}%**")
-        prob_df = pd.DataFrame({"Class": cls, "Probability": prob_vec})
-        st.bar_chart(prob_df.set_index("Class"))
+
+        # Pretty labels for classes (customize if you want)
+        def pretty_class(c: str) -> str:
+            mapping = {"1": "Very Low", "2": "Low", "3": "Medium", "4": "High", "5": "Very High"}
+            return mapping.get(str(c), str(c))
+
+        st.success(f"Predicted **{tgt}**: **{pretty_class(pred_class)}**  |  Confidence: **{conf*100:.1f}%**")
+        st.progress(int(round(conf*100)))
+
+        prob_df = pd.DataFrame({"Class": [pretty_class(c) for c in cls], "Probability": prob_vec}).sort_values("Probability", ascending=False)
+        st.dataframe(prob_df.style.format({"Probability": "{:.3f}"}), use_container_width=True, hide_index=True)
+
+        show_chart = st.checkbox("Show class probability chart", value=False)
+        if show_chart:
+            st.bar_chart(prob_df.set_index("Class"))
+
         with st.expander("Show evidence used"):
             st.json(evidence)
+
     except Exception as e:
         st.error(f"Prediction failed: {e}")
         with st.expander("Evidence (debug)"):
             st.json(evidence)
+
+st.markdown('</div>', unsafe_allow_html=True)

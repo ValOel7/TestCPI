@@ -39,7 +39,7 @@ st.markdown(
 )
 
 st.title("🛍️ Purchase Intention (Bayesian Network)")
-st.caption(f"Python {sys.version.split()[0]} • Platform {platform.platform()}")
+
 
 # ---------- load the bundle ----------
 @st.cache_resource(show_spinner=False)

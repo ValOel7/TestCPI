@@ -27,8 +27,9 @@ with col2:
     Level_of_Education = st.radio("Level of Education", ["Primary", "Secondary", "Tertiary", "Other"], horizontal=True)
     Shopping_frequency = st.radio("Shopping frequency", ["1-2x/week", "2-3x/week", "3-4x/week", "5-6x/week", "6-7x/week"], horizontal=False)
 
-# Load model
-bundle = load_bundle(PICKLE_PATH)
+# Load the trained model
+with open('bn_pgmpy.pkl', 'rb') as file:
+    model = pickle.load(file)
 TARGET = bundle["target"]
 
 demo_answers = {

@@ -1,5 +1,5 @@
 # app.py
-pip install pgmpy numpy pandas networkx scipy streamlit
+
 import pickle
 import numpy as np
 import pandas as pd

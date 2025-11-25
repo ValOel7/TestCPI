@@ -1,4 +1,4 @@
-# app.py — infer products directly from the BN (no product question UI)
+# app.py — Streamlit BN inference: Purchase Intention + inferred Products
 
 import sys, platform, pickle, json, os
 import numpy as np
@@ -398,7 +398,7 @@ if st.button("Predict Purchase Intention", type="primary"):
         st.session_state.conf = pi_conf
         st.session_state.classes = pi_states
         st.session_state.prob_vec = pi_probs
-        st.session_state.top_products = products_topk
+        st.session_state.top_products = products_topk  # <- always set, even if None
 
         st.rerun()
     except Exception as e:
@@ -409,7 +409,7 @@ if st.session_state.pred is not None:
     conf = st.session_state.conf
     cls_states = st.session_state.classes
     pi_vec = st.session_state.prob_vec
-    top_products = st.session_state.top_products
+    top_products = st.session_state.get("top_products")
 
     # Pretty mapping for PI
     mapping = {"1":"Very Low","2":"Low","3":"Medium","4":"High","5":"Very High"}
@@ -418,7 +418,7 @@ if st.session_state.pred is not None:
     st.success(f"Predicted **{tgt}**: **{pretty}**  |  Confidence: **{conf*100:.1f}%**")
     st.progress(int(round(conf*100)))
 
-    # PI distribution (top-3 only, to keep it compact)
+    # PI distribution (top-3 only)
     pi_df = pd.DataFrame({"Class": [mapping.get(str(c), str(c)) for c in cls_states],
                           "Probability": pi_vec})
     pi_df = pi_df.sort_values("Probability", ascending=False).head(3)
@@ -433,8 +433,8 @@ if st.session_state.pred is not None:
         )
 
         if SHOW_STAFF_SUGGESTION and conf >= ASSIST_THRESHOLD:
-            top_product = top_products.iloc[0]["Product"]
-            staff = suggest_staff(str(top_product))
+            top_product = str(top_products.iloc[0]["Product"])
+            staff = suggest_staff(top_product)
             st.info(f"Please call **{staff}** to assist with **{top_product}**.")
 
 st.markdown('</div>', unsafe_allow_html=True)

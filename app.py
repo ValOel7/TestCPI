@@ -1,10 +1,10 @@
-# app.py
+#Import the necessary files
 import sys, platform, pickle, json, os
 import numpy as np
 import pandas as pd
 import streamlit as st
 
-# ---- import pgmpy VE only (no BayesianModel needed) ----
+#Import VE as only importing the pickle, not rebuilding the model.
 try:
     from pgmpy.inference import VariableElimination
 except ModuleNotFoundError:
@@ -15,7 +15,7 @@ except ModuleNotFoundError:
         language="bash",
     )
     st.stop()
-
+#I added the pickle file in the github, so in here it will just be uploaded
 PICKLE_PATH = "bn_pgmpy.pkl"
 
 # ---------- Page + styles ----------
@@ -40,7 +40,7 @@ st.markdown(
 
 st.title("🛍️ Purchase Intention Real-Time Assistant")
 
-
+#streamlit resource cache to only read the pickle once per session not every rerun
 # ---------- load the bundle ----------
 @st.cache_resource(show_spinner=False)
 def load_bundle(path: str):
@@ -64,7 +64,7 @@ target_node = bundle["target"]
 classes = bundle["classes"]
 state_names = bundle["state_names"]  # typically: dict node -> list of states
 
-# ---------- NO-RETRAIN, NO-REBUILD: lightweight pgmpy shims ----------
+#if the versions of pgmpy change this would be able to still make it work =
 # 1) Some VE versions call model.check_model()
 if not hasattr(model, "check_model"):
     def _noop_check_model(*args, **kwargs):
@@ -132,7 +132,7 @@ def predict_purchase(bundle_obj, evidence: dict):
 LABEL_MAP_PATH = "state_label_map.json"  # optional override
 DEFAULT_LABELS = {
     "Gender": {"1": "Male", "2": "Female", "3": "Prefer not to say"},
-    "Age": {"1": "18–22", "2": "23–28", "3": "29–35", "4": "35–49", "5": "50–65"},
+    "Age": {"1": "18-22", "2": "23-28", "3": "29-35", "4": "35-49", "5": "50-65"},
     "Marital_Status": {"1": "Married", "2": "Single", "3": "Prefer not to say"},
     "Employment_Status": {"1": "Employed", "2": "Unemployed", 1: "Employed", 2: "Unemployed"},
     # Updated per your training mapping (include string and int keys, just in case)
@@ -140,7 +140,7 @@ DEFAULT_LABELS = {
         "1": "No formal", "2": "Basic", "3": "Diploma", "4": "Degree", "5": "Postgrad",
         1: "No formal", 2: "Basic", 3: "Diploma", 4: "Degree", 5: "Postgrad",
     },
-    "Shopping_frequency": {"1": "1–2x/week", "2": "2–3x/week", "3": "3–4x/week", "4": "5–6x/week", "5": "6–7x/week"},
+    "Shopping_frequency": {"1": "1-2x/week", "2": "2-3x/week", "3": "3-4x/week", "4": "5-6x/week", "5": "6-7x/week"},
     "Regular_Customer": {"1": "Regular", "2": "Only when needed"},
     # Likert nodes already "1".."5"; formatted separately.
 }
@@ -207,9 +207,9 @@ Price_Sensitivity = pick_existing_node(state_names, ["Price_Sensitivity", "Price
 # You can tune these if you have empirical medians by segment.
 empathy_medians = {
     "Gender": {"Male": 4, "Female": 4, "Prefer not to say": 3},
-    "Age": {"18–22": 3, "23–28": 4, "29–35": 4, "35–49": 3, "50–65": 4},
+    "Age": {"18-22": 3, "23-28": 4, "29-35": 4, "35-49": 3, "50-65": 4},
     "Marital_Status": {"Married": 4, "Single": 4, "Prefer not to say": 3},
-    "Shopping_frequency": {"1–2x/week": 3, "2–3x/week": 4, "3–4x/week": 4, "5–6x/week": 4, "6–7x/week": 4},
+    "Shopping_frequency": {"1-2x/week": 3, "2-3x/week": 4, "3-4x/week": 4, "5-6x/week": 4, "6-7x/week": 4},
     "Regular_Customer": {"Regular": 4, "Only when\nneeded": 3, "Only when needed": 3},
     "Employment_Status": {"Employed": 4, "Unemployed": 4},
     # If you want Level_of_Education to influence these, add values like below:
@@ -217,18 +217,18 @@ empathy_medians = {
 }
 convenience_medians = {
     "Gender": {"Male": 4, "Female": 4, "Prefer not to say": 3},
-    "Age": {"18–22": 3, "23–28": 4, "29–35": 4, "35–49": 4, "50–65": 4},
+    "Age": {"18-22": 3, "23-28": 4, "29-35": 4, "35-49": 4, "50-65": 4},
     "Marital_Status": {"Married": 4, "Single": 4, "Prefer not to say": 5},
-    "Shopping_frequency": {"1–2x/week": 4, "2–3x/week": 4, "3–4x/week": 5, "5–6x/week": 5, "6–7x/week": 2},
+    "Shopping_frequency": {"1-2x/week": 4, "2-3x/week": 4, "3-4x/week": 5, "5-6x/week": 5, "6-7x/week": 2},
     "Regular_Customer": {"Regular": 4, "Only when\nneeded": 3, "Only when needed": 3},
     "Employment_Status": {"Employed": 4, "Unemployed": 4},
     # "Level_of_Education": {"No formal": 3, "Basic": 3, "Diploma": 4, "Degree": 4, "Postgrad": 4},
 }
 customer_trust_medians = {
     "Gender": {"Male": 4, "Female": 3, "Prefer not to say": 3},
-    "Age": {"18–22": 4, "23–28": 4, "29–35": 3, "35–49": 4, "50–65": 3},
+    "Age": {"18-22": 4, "23-28": 4, "29-35": 3, "35-49": 4, "50-65": 3},
     "Marital_Status": {"Married": 4, "Single": 3, "Prefer not to say": 3},
-    "Shopping_frequency": {"1–2x/week": 3, "2–3x/week": 4, "3–4x/week": 3, "5–6x/week": 5, "6–7x/week": 3},
+    "Shopping_frequency": {"1-2x/week": 3, "2-3x/week": 4, "3-4x/week": 3, "5-6x/week": 5, "6-7x/week": 3},
     "Regular_Customer": {"Regular": 4, "Only when\nneeded": 3, "Only when needed": 3},
     "Employment_Status": {"Employed": 3, "Unemployed": 4},
     # "Level_of_Education": {"No formal": 3, "Basic": 3, "Diploma": 4, "Degree": 4, "Postgrad": 4},
@@ -277,7 +277,7 @@ trust_score = averaged_score_for_var(customer_trust_medians, demo_labels)
 
 c1, c2, c3 = st.columns(3)
 for col, title, val in zip((c1, c2, c3),
-                           ("Empathy (1–5)", "Convenience (1–5)", "Customer Trust (1–5)"),
+                           ("Empathy (1-5)", "Convenience (1-5)", "Customer Trust (1-5)"),
                            (emp_score, conv_score, trust_score)):
     with col:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)

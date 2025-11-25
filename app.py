@@ -367,7 +367,7 @@ put(Price_Sensitivity, q_price_code)
 # =========================================================
 # 4) PREDICTION
 # =========================================================
-st.markdown('<div class="section qcard"><div class="qtitle">4) Prediction <span class="badge">Bottom</span></div>', unsafe_allow_html=True)
+st.markdown('<div class="section qcard"><div class="qtitle">4) Prediction <span class="badge">Step 4</span></div>', unsafe_allow_html=True)
 
 if st.button("Predict Purchase Intention", type="primary"):
     try:
@@ -415,7 +415,7 @@ if st.session_state.pred is not None:
 
 # Assisted selling (dropdown; persistent; appears after prediction)
 if st.session_state.assist_ready:
-    st.markdown('<div class="section qcard"><div class="qtitle">5) Product interest (optional) <span class="badge">Assisted</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section qcard"><div class="qtitle">5) Product interest <span class="badge">Assisted</span></div>', unsafe_allow_html=True)
     OPTIONS = ["— Select a category —"] + PRODUCT_CATEGORIES
     choice = st.selectbox(
         "Which product category is the customer interested in?",

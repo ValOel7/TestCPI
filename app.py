@@ -30,7 +30,6 @@ STAFF_ROSTER = {
 }
 
 def suggest_staff(category: str) -> str:
-    """Pick a staff member deterministically based on category, so it doesn't flicker between reruns."""
     roster = STAFF_ROSTER.get(category, [])
     if not roster:
         return "Any available associate"
@@ -74,7 +73,7 @@ st.markdown(
       .st-emotion-cache-16idsys p { margin-bottom: 0.35rem; } /* tighten labels */
       input[type="radio"]:checked { accent-color: var(--accent); }
 
-      /* New: question cards, badges, sticky summary */
+      /* Question cards & badges */
       .qcard {
         background:#f7f9fd; border:1px solid #e7edf6; border-radius:14px;
         padding:16px; margin:10px 0; box-shadow: 0 1px 0 rgba(10,31,68,0.03);
@@ -84,27 +83,12 @@ st.markdown(
         display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px;
         background:#eef2ff; color:#3730a3; border:1px solid #e0e7ff;
       }
-      .sticky-summary {
-        position:sticky; top:0; z-index:10; background:white;
-        padding:8px 12px; border-bottom:1px solid #eef0f4; margin-bottom:10px;
-      }
     </style>
     """,
     unsafe_allow_html=True
 )
 
 st.title("🛍️ Purchase Intention Real-Time Assistant")
-
-# Sticky summary (shows after the first prediction)
-if st.session_state.get("pred"):
-    tgt, pred_class = st.session_state.pred
-    conf = st.session_state.conf
-    mapping = {"1":"Very Low","2":"Low","3":"Medium","4":"High","5":"Very High"}
-    pretty = mapping.get(str(pred_class), str(pred_class))
-    st.markdown(
-        f'<div class="sticky-summary">Predicted <b>{tgt}</b>: <b>{pretty}</b> &nbsp;|&nbsp; Confidence: <b>{conf*100:.1f}%</b></div>',
-        unsafe_allow_html=True
-    )
 
 # ---------- Load the bundle once ----------
 PICKLE_PATH = "bn_pgmpy.pkl"
@@ -206,7 +190,6 @@ DEFAULT_LABELS = {
     },
     "Shopping_frequency": {"1": "1-2x/week", "2": "2-3x/week", "3": "3-4x/week", "4": "5-6x/week", "5": "6-7x/week"},
     "Regular_Customer": {"1": "Regular", "2": "Only when needed"},
-    # Likert nodes already "1".."5"; formatted separately.
 }
 
 def load_label_map(state_names_dict) -> dict:
@@ -229,13 +212,12 @@ def load_label_map(state_names_dict) -> dict:
 LABELS = load_label_map(state_names)
 
 def radio_mapped(title: str, node_key: str, *, horizontal: bool = True):
-    """Show pretty labels only; return the underlying BN state code (string)."""
     opts = state_names.get(node_key, []) if isinstance(state_names, dict) else []
     if not opts:
         return None
     pretty = [LABELS.get(node_key, {}).get(code, code) for code in opts]
     idx = st.radio(title, list(range(len(opts))), format_func=lambda i: pretty[i], horizontal=horizontal)
-    return opts[idx]  # underlying string code
+    return opts[idx]
 
 def likert_radio(title: str, node_key: str):
     opts = state_names.get(node_key, ["1", "2", "3", "4", "5"]) if isinstance(state_names, dict) else ["1","2","3","4","5"]
@@ -343,7 +325,7 @@ demo_labels = {
     "Regular_Customer": label_of(Regular_Customer, ui_regular_code) if ui_regular_code else None,
 }
 
-# Auto-compute the 3 variables from demographics (after submit they update)
+# Auto-compute the 3 variables from demographics
 st.markdown('<div class="qcard"><div class="qtitle">Computed from Demographics <span class="badge">Step 2</span></div>', unsafe_allow_html=True)
 emp_score  = averaged_score_for_var(empathy_medians, demo_labels, DEMO_KEYS)
 conv_score = averaged_score_for_var(convenience_medians, demo_labels, DEMO_KEYS)
@@ -385,7 +367,7 @@ def build_evidence():
     return evidence
 
 # =========================================================
-# PREDICTION
+# PREDICTION (kept at the bottom)
 # =========================================================
 st.markdown('<div class="qcard"><div class="qtitle">Prediction <span class="badge">Step 3</span></div>', unsafe_allow_html=True)
 
@@ -406,7 +388,7 @@ if submit:
         with st.expander("Evidence (debug)"):
             st.json(evidence)
 
-# Render prediction from session (persists across reruns)
+# Render prediction from session (bottom of page)
 if st.session_state.pred is not None:
     tgt, pred_class = st.session_state.pred
     conf = st.session_state.conf
@@ -433,7 +415,7 @@ if st.session_state.pred is not None:
         use_container_width=True, hide_index=True
     )
 
-# Assisted selling (dropdown; persistent; no default)
+# Assisted selling (dropdown; persistent; appears below prediction)
 if st.session_state.assist_ready:
     st.markdown('<div class="qcard"><div class="qtitle">Product Interest <span class="badge">Optional</span></div>', unsafe_allow_html=True)
     options = ["— Select a category —"] + PRODUCT_CATEGORIES
@@ -446,7 +428,7 @@ if st.session_state.assist_ready:
         st.info(f"Please call **{suggest_staff(choice)}** to assist with **{choice}**.")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Reset utility (doesn't clear radios; it clears prediction and product choice)
+# Reset utility
 col_reset, _ = st.columns([1,3])
 with col_reset:
     if st.button("Reset", use_container_width=True):

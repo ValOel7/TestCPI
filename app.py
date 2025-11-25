@@ -373,33 +373,24 @@ if st.button("Predict Purchase Intention", type="primary"):
         prob_df = pd.DataFrame({"Class": [pretty_class(c) for c in cls], "Probability": prob_vec}).sort_values("Probability", ascending=False)
         st.dataframe(prob_df.style.format({"Probability": "{:.3f}"}), use_container_width=True, hide_index=True)
 
-                # ---------- Assisted selling (optional, does NOT affect BN) ----------
+        # ---------- Assisted selling (optional, does NOT affect BN) ----------
         if conf >= ASSIST_THRESHOLD:
-            st.markdown("### 5) Optional: Product interest (for quick assistance)")
-            st.caption("Since purchase intention is high, you can capture interest to alert a specialist.")
+            st.markdown("### 5) Product interest (optional)")
+            st.caption("Since purchase intention is high, capture the interest to alert a specialist.")
 
-            # Non-compulsory product choice
-           chosen_category = st.selectbox("Which product category...", PRODUCT_CATEGORIES)
-            
+            # Dropdown (no handoff details saved/shown)
+            chosen_category = st.selectbox(
+                "Which product category is the customer interested in?",
+                PRODUCT_CATEGORIES,
+                index=0
+            )
 
             # Recommend a staff member
             recommended = suggest_staff(chosen_category)
-            st.info(f"Suggested staff member for **{chosen_category}**: **{recommended}**")
-
-            # (Optional) Provide a tiny handoff note you can copy
-            handoff = {
-                "category": chosen_category,
-                "recommended_staff": recommended,
-                "predicted_intention_class": str(pred_class),
-                "confidence": f"{conf*100:.1f}%"
-            }
-            with st.expander("Copy handoff details"):
-                st.json(handoff)
+            st.info(f"Please call **{recommended}** to assist with **{chosen_category}**.")
         else:
-            st.markdown("### 5) Optional: Product interest")
-            st.caption("Prediction confidence is below 60%. Skipping assisted handoff to focus on higher-likelihood customers.")
-
-
+            # If you don't want any message when confidence is low, delete this 'else' entirely.
+            st.caption("Prediction confidence is below 60% — skipping assisted selling.")
 
     except Exception as e:
         st.error(f"Prediction failed: {e}")

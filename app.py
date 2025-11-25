@@ -409,7 +409,7 @@ if st.session_state.pred is not None:
                  use_container_width=True, hide_index=True)
 
 if st.session_state.assist_ready:
-    st.markdown("### 5) Product interest (optional)")
+    st.markdown("### 5) Product interest")
     st.caption("Since purchase intention is high, capture interest to alert a specialist.")
 
     # Use placeholder option to avoid defaulting to first category

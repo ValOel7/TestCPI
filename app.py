@@ -4,8 +4,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-# ===== Assisted-selling config (does NOT affect the BN) =====
+# ===== Config =====
 ASSIST_THRESHOLD = 0.60  # 60%
+TOP_K = 3                # <-- show only the top-3 classes in the table
 
 PRODUCT_CATEGORIES = [
     "Dairy", "Meat", "Fruit & Veg", "Frozen Foods", "Bakery",
@@ -72,7 +73,7 @@ st.markdown(
                  padding:18px 18px 12px; margin: 14px 0 10px; }
       .section h2 { margin: 0 0 14px 0; }
 
-      /* New: subtle shaded cards & badges */
+      /* Subtle shaded cards & badges */
       .qcard {
         background:#f7f9fd; border:1px solid #e7edf6; border-radius:14px;
         padding:16px; margin:10px 0; box-shadow: 0 1px 0 rgba(10,31,68,0.03);
@@ -400,10 +401,17 @@ if st.session_state.pred is not None:
     st.success(f"Predicted **{tgt}**: **{pretty}**  |  Confidence: **{conf*100:.1f}%**")
     st.progress(int(round(conf*100)))
 
-    prob_df = pd.DataFrame({"Class": [mapping.get(str(c), str(c)) for c in cls],
-                            "Probability": prob_vec}).sort_values("Probability", ascending=False)
-    st.dataframe(prob_df.style.format({"Probability": "{:.3f}"}),
-                 use_container_width=True, hide_index=True)
+    # --------- Top-K probability table (this is the only functional change) ---------
+    prob_df = pd.DataFrame(
+        {"Class": [mapping.get(str(c), str(c)) for c in cls],
+         "Probability": prob_vec}
+    )
+    prob_df = prob_df.nlargest(TOP_K, "Probability")  # keep only top-K rows
+
+    st.dataframe(
+        prob_df.style.format({"Probability": "{:.3f}"}),
+        use_container_width=True, hide_index=True
+    )
 
 # Assisted selling (dropdown; persistent; appears after prediction)
 if st.session_state.assist_ready:
@@ -420,5 +428,3 @@ if st.session_state.assist_ready:
         recommended = suggest_staff(choice)
         st.info(f"Please call **{recommended}** to assist with **{choice}**.")
     st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)

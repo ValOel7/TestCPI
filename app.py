@@ -6,7 +6,7 @@ import streamlit as st
 
 #If the purchase intention is 60 and above then the customer will be asked which product category they are interested in and then a specialist staff member will assist the customer
 #If purchase intention is less, then a staff member will not be sent out the customer and rather wait for next highly probable purchasing customer
-#staff member is sent to assiss the customer in terms of advising on best breads or best diary products as per customer query 
+#staff member is sent to assiss the customer in terms of advising on best breads or best dairy products as per customer query 
 # ===== Assisted-selling config (does NOT affect the BN) =====
 ASSIST_THRESHOLD = 0.60  # 60%
 
@@ -36,6 +36,16 @@ def suggest_staff(category: str) -> str:
         return "Any available associate"
     idx = (hash(category) % len(roster))
     return roster[idx]
+
+#session staes to ensure the app does not wipe all answers when new answers are added:
+# ---- Session defaults ----
+if "pred" not in st.session_state:
+    st.session_state.pred = None          # (target, class_str)
+    st.session_state.conf = 0.0           # float 0..1
+    st.session_state.classes = []         # class order
+    st.session_state.prob_vec = None      # np.array
+    st.session_state.assist_ready = False
+    st.session_state.product_category = "— Select a category —"
 
 #Import VE as only importing the pickle, not rebuilding the model.
 try:
@@ -362,39 +372,59 @@ if st.button("Predict Purchase Intention", type="primary"):
     try:
         tgt, pred_class, conf, cls, prob_vec = predict_purchase(bundle, evidence)
 
-        # Pretty labels for classes (customize if you want)
-        def pretty_class(c: str) -> str:
-            mapping = {"1": "Very Low", "2": "Low", "3": "Medium", "4": "High", "5": "Very High"}
-            return mapping.get(str(c), str(c))
+        # Save results to session state
+        st.session_state.pred = (tgt, pred_class)
+        st.session_state.conf = conf
+        st.session_state.classes = cls
+        st.session_state.prob_vec = prob_vec
+        st.session_state.assist_ready = (conf >= ASSIST_THRESHOLD)
 
-        st.success(f"Predicted **{tgt}**: **{pretty_class(pred_class)}**  |  Confidence: **{conf*100:.1f}%**")
-        st.progress(int(round(conf*100)))
+        # Optional: reset product choice each time you re-predict
+        st.session_state.product_category = "— Select a category —"
 
-        prob_df = pd.DataFrame({"Class": [pretty_class(c) for c in cls], "Probability": prob_vec}).sort_values("Probability", ascending=False)
-        st.dataframe(prob_df.style.format({"Probability": "{:.3f}"}), use_container_width=True, hide_index=True)
-
-        # ---------- Assisted selling (optional, does NOT affect BN) ----------
-        if conf >= ASSIST_THRESHOLD:
-            st.markdown("### 5) Product interest (optional)")
-            st.caption("Since purchase intention is high, capture the interest to alert a specialist.")
-
-            # Dropdown (no handoff details saved/shown)
-            chosen_category = st.selectbox(
-                "Which product category is the customer interested in?",
-                PRODUCT_CATEGORIES,
-                index=0
-            )
-
-            # Recommend a staff member
-            recommended = suggest_staff(chosen_category)
-            st.info(f"Please call **{recommended}** to assist with **{chosen_category}**.")
-        else:
-            # If you don't want any message when confidence is low, delete this 'else' entirely.
-            st.caption("Prediction confidence is below 60% — skipping assisted selling.")
+        # Rerun so the app renders the assist section independent of the button state
+        st.rerun()
 
     except Exception as e:
         st.error(f"Prediction failed: {e}")
         with st.expander("Evidence (debug)"):
             st.json(evidence)
+            
+if st.session_state.pred is not None:
+    tgt, pred_class = st.session_state.pred
+    conf = st.session_state.conf
+    cls = st.session_state.classes
+    prob_vec = st.session_state.prob_vec
+
+    # Pretty name (optional)
+    mapping = {"1":"Very Low","2":"Low","3":"Medium","4":"High","5":"Very High"}
+    pretty = mapping.get(str(pred_class), str(pred_class))
+
+    st.success(f"Predicted **{tgt}**: **{pretty}**  |  Confidence: **{conf*100:.1f}%**")
+    st.progress(int(round(conf*100)))
+
+    prob_df = pd.DataFrame({"Class": [mapping.get(str(c), str(c)) for c in cls],
+                            "Probability": prob_vec}).sort_values("Probability", ascending=False)
+    st.dataframe(prob_df.style.format({"Probability": "{:.3f}"}),
+                 use_container_width=True, hide_index=True)
+
+if st.session_state.assist_ready:
+    st.markdown("### 5) Product interest (optional)")
+    st.caption("Since purchase intention is high, capture interest to alert a specialist.")
+
+    # Use placeholder option to avoid defaulting to first category
+    OPTIONS = ["— Select a category —"] + PRODUCT_CATEGORIES
+    # Bind to session_state so it persists across reruns
+    choice = st.selectbox(
+        "Which product category is the customer interested in?",
+        OPTIONS,
+        key="product_category",
+        index=OPTIONS.index(st.session_state.product_category)
+        if st.session_state.product_category in OPTIONS else 0
+    )
+
+    if choice != "— Select a category —":
+        recommended = suggest_staff(choice)
+        st.info(f"Please call **{recommended}** to assist with **{choice}**.")
 
 st.markdown('</div>', unsafe_allow_html=True)

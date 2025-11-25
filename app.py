@@ -336,7 +336,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 # =========================================================
 st.markdown('<div class="section qcard"><div class="qtitle">3) Customer answers (Likert) <span class="badge">Step 3</span></div>', unsafe_allow_html=True)
 q_val_code = likert_radio("Do you think this store provides good value for money  (being affordable for what you get) ?", Perceived_Value)
-q_qual_code = likert_radio("Do you think the overall quality of the products in this shop is good", Perceived_Product_Quality)
+q_qual_code = likert_radio("Do you think the overall quality of the products in this shop is good?", Perceived_Product_Quality)
 q_price_code = likert_radio("Are you willing to still shop from this store even if prices increase slightly, due to the proximity of the store?", Price_Sensitivity)
 q_env_code = likert_radio("Do you think the store is appealing, clean, tidy and creates a pleasant shopping environment?", Physical_Environment)
 st.markdown('</div>', unsafe_allow_html=True)

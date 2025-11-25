@@ -1,7 +1,4 @@
-# app.py
-# ---------------------------------------------------------
-# Purchase Intention Real-Time Assistant (Streamlit + pgmpy)
-# ---------------------------------------------------------
+#Import the necessary files
 import sys, platform, pickle, json, os
 import numpy as np
 import pandas as pd
@@ -30,13 +27,14 @@ STAFF_ROSTER = {
 }
 
 def suggest_staff(category: str) -> str:
+    """Pick a staff member deterministically based on category, so it doesn't flicker between reruns."""
     roster = STAFF_ROSTER.get(category, [])
     if not roster:
         return "Any available associate"
     idx = (hash(category) % len(roster))
     return roster[idx]
 
-# ---- Session defaults (so UI doesn't snap back) ----
+# ---- Session defaults ----
 if "pred" not in st.session_state:
     st.session_state.pred = None          # (target, class_str)
     st.session_state.conf = 0.0           # float 0..1
@@ -45,7 +43,7 @@ if "pred" not in st.session_state:
     st.session_state.assist_ready = False
     st.session_state.product_category = "— Select a category —"
 
-# ---- Import pgmpy VE only (we load a fitted model from pickle) ----
+# ---- Import VE only (we load a fitted model from pickle) ----
 try:
     from pgmpy.inference import VariableElimination
 except ModuleNotFoundError:
@@ -57,6 +55,8 @@ except ModuleNotFoundError:
     )
     st.stop()
 
+PICKLE_PATH = "bn_pgmpy.pkl"
+
 # ---------- Page + styles ----------
 st.set_page_config(page_title="Purchase Intention Real-Time Assistant", page_icon="🛍️", layout="centered")
 st.markdown(
@@ -66,14 +66,13 @@ st.markdown(
       .block-container {max-width: 980px;}
       h1, .stMarkdown h1 { letter-spacing: -0.3px; }
       h2, .stMarkdown h2 { margin-top: 0.25rem; }
-      .section { background:#fbfcfe; border:1px solid #eef0f4; border-radius:14px; padding:18px 18px 12px; margin: 14px 0 10px; }
-      .section h2 { margin: 0 0 14px 0; }
-      .metric-card {background:#f8f9fb; padding:12px 16px; border-radius:14px; border:1px solid #eef0f4;}
-      .stRadio > label {font-weight:600;}
-      .st-emotion-cache-16idsys p { margin-bottom: 0.35rem; } /* tighten labels */
-      input[type="radio"]:checked { accent-color: var(--accent); }
 
-      /* Question cards & badges */
+      /* Existing section look */
+      .section { background:#fbfcfe; border:1px solid #eef0f4; border-radius:14px;
+                 padding:18px 18px 12px; margin: 14px 0 10px; }
+      .section h2 { margin: 0 0 14px 0; }
+
+      /* New: subtle shaded cards & badges */
       .qcard {
         background:#f7f9fd; border:1px solid #e7edf6; border-radius:14px;
         padding:16px; margin:10px 0; box-shadow: 0 1px 0 rgba(10,31,68,0.03);
@@ -82,7 +81,13 @@ st.markdown(
       .badge {
         display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px;
         background:#eef2ff; color:#3730a3; border:1px solid #e0e7ff;
+        margin-left:8px;
       }
+
+      .metric-card {background:#f8f9fb; padding:12px 16px; border-radius:14px; border:1px solid #eef0f4;}
+      .stRadio > label {font-weight:600;}
+      .st-emotion-cache-16idsys p { margin-bottom: 0.35rem; } /* tighten labels */
+      input[type="radio"]:checked { accent-color: var(--accent); }
     </style>
     """,
     unsafe_allow_html=True
@@ -90,9 +95,7 @@ st.markdown(
 
 st.title("🛍️ Purchase Intention Real-Time Assistant")
 
-# ---------- Load the bundle once ----------
-PICKLE_PATH = "bn_pgmpy.pkl"
-
+# ---------- load the bundle ----------
 @st.cache_resource(show_spinner=False)
 def load_bundle(path: str):
     with open(path, "rb") as f:
@@ -104,7 +107,7 @@ except Exception as e:
     st.error(f"❌ Failed to load pickle at '{PICKLE_PATH}': {e}")
     st.stop()
 
-# Basic key checks
+# basic key checks
 for k in ("model", "target", "classes", "state_names"):
     if k not in bundle:
         st.error(f"❌ Pickle missing required key: {k}")
@@ -115,15 +118,19 @@ target_node = bundle["target"]
 classes = bundle["classes"]
 state_names = bundle["state_names"]  # dict node -> list of states
 
-# Compat shims across pgmpy versions
+# pgmpy compatibility shims
 if not hasattr(model, "check_model"):
     def _noop_check_model(*args, **kwargs): return True
-    try: model.check_model = _noop_check_model
-    except Exception: pass
+    try:
+        model.check_model = _noop_check_model
+    except Exception:
+        pass
 
 if not hasattr(model, "factors"):
-    try: cpds = model.get_cpds()
-    except Exception: cpds = []
+    try:
+        cpds = model.get_cpds()
+    except Exception:
+        cpds = []
     factors = []
     for cpd in cpds:
         tf = getattr(cpd, "to_factor", None)
@@ -133,14 +140,10 @@ if not hasattr(model, "factors"):
             except Exception:
                 pass
         factors.append(cpd)
-    try: model.factors = factors
-    except Exception: pass
-
-# Cache the inference engine (perf polish)
-@st.cache_resource
-def get_infer(m):
-    from pgmpy.inference import VariableElimination
-    return VariableElimination(m)
+    try:
+        model.factors = factors
+    except Exception:
+        pass
 
 # ---------- helpers ----------
 def pick_existing_node(state_names_dict, candidates: list[str]):
@@ -159,10 +162,9 @@ def median_from_lookup(medians_dict, demo_name, demo_label_value, fallback=3):
         demo_label_value = "Only when\nneeded"
     return int(d.get(demo_label_value, fallback))
 
-def averaged_score_for_var(var_medians_dict, demo_answers_labels: dict, demo_keys: list[str]) -> int:
+def averaged_score_for_var(var_medians_dict, demo_answers_labels: dict) -> int:
     vals = []
-    for demo_name in demo_keys:
-        demo_label = demo_answers_labels.get(demo_name)
+    for demo_name, demo_label in demo_answers_labels.items():
         if demo_label:
             vals.append(median_from_lookup(var_medians_dict, demo_name, demo_label, fallback=3))
     if not vals:
@@ -170,7 +172,7 @@ def averaged_score_for_var(var_medians_dict, demo_answers_labels: dict, demo_key
     return clamp_round_1_to_5(float(np.mean(vals)))
 
 def predict_purchase(bundle_obj, evidence: dict):
-    ve = get_infer(bundle_obj["model"])
+    ve = VariableElimination(bundle_obj["model"])
     q = ve.query([bundle_obj["target"]], evidence=evidence, show_progress=False)
     probs = dict(zip(q.state_names[bundle_obj["target"]], q.values.flatten().astype(float)))
     prob_vec = np.array([probs.get(c, 0.0) for c in bundle_obj["classes"]], dtype=float)
@@ -212,12 +214,13 @@ def load_label_map(state_names_dict) -> dict:
 LABELS = load_label_map(state_names)
 
 def radio_mapped(title: str, node_key: str, *, horizontal: bool = True):
+    """Show pretty labels only; return the underlying BN state code (string)."""
     opts = state_names.get(node_key, []) if isinstance(state_names, dict) else []
     if not opts:
         return None
     pretty = [LABELS.get(node_key, {}).get(code, code) for code in opts]
     idx = st.radio(title, list(range(len(opts))), format_func=lambda i: pretty[i], horizontal=horizontal)
-    return opts[idx]
+    return opts[idx]  # underlying string code
 
 def likert_radio(title: str, node_key: str):
     opts = state_names.get(node_key, ["1", "2", "3", "4", "5"]) if isinstance(state_names, dict) else ["1","2","3","4","5"]
@@ -278,40 +281,24 @@ customer_trust_medians = {
     "Level_of_Education": {"No formal": 3, "Basic": 3, "Diploma": 4, "Degree": 4, "Postgrad": 4},
 }
 
-# For averaging order
-DEMO_KEYS = [
-    "Gender", "Age", "Marital_Status", "Employment_Status",
-    "Level_of_Education", "Regular_Customer", "Shopping_frequency"
-]
-
 # =========================================================
-# INPUT FORM (Demographics + 4 Likert answers)
+# 1) DEMOGRAPHICS
 # =========================================================
-st.markdown('<div class="qcard"><div class="qtitle">Customer Information <span class="badge">Step 1</span></div>', unsafe_allow_html=True)
-with st.form("customer_form", clear_on_submit=False):
-    col1, col2 = st.columns(2, gap="large")
-    with col1:
-        ui_gender_code = radio_mapped("Gender", Gender, horizontal=True)
-        ui_age_code = radio_mapped("Age", Age, horizontal=True)
-        ui_marital_code = radio_mapped("Marital Status", Marital_Status, horizontal=True)
-        ui_regular_code = radio_mapped("Customer Type", Regular_Customer, horizontal=True)
-    with col2:
-        ui_empstat_code = radio_mapped("Employment Status", Employment_Status, horizontal=True)
-        ui_edu_code = radio_mapped("Level of Education", Level_of_Education, horizontal=True)
-        ui_shopfreq_code = radio_mapped("Shopping frequency", Shopping_frequency, horizontal=False)
-
-    st.markdown('<hr/>', unsafe_allow_html=True)
-
-    # 4 Likert questions (strings "1".."5")
-    q_val_code   = likert_radio("Perceived Value", Perceived_Value)
-    q_qual_code  = likert_radio("Perceived Product Quality", Perceived_Product_Quality)
-    q_env_code   = likert_radio("Physical Environment", Physical_Environment)
-    q_price_code = likert_radio("Price Sensitivity", Price_Sensitivity)
-
-    submit = st.form_submit_button("Predict Purchase Intention", use_container_width=True)
+st.markdown('<div class="section qcard"><div class="qtitle">1) Choose the customer\'s demographics <span class="badge">Step 1</span></div>', unsafe_allow_html=True)
+col1, col2 = st.columns(2, gap="large")
+with col1:
+    ui_gender_code = radio_mapped("Gender", Gender, horizontal=True)
+    ui_age_code = radio_mapped("Age", Age, horizontal=True)
+    ui_marital_code = radio_mapped("Marital Status", Marital_Status, horizontal=True)
+    ui_regular_code = radio_mapped("Customer Type", Regular_Customer, horizontal=True)
+with col2:
+    ui_empstat_code = radio_mapped("Employment Status", Employment_Status, horizontal=True)
+    ui_edu_code = radio_mapped("Level of Education", Level_of_Education, horizontal=True)
+    ui_shopfreq_code = radio_mapped("Shopping frequency", Shopping_frequency, horizontal=False)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Convert codes -> labels for median lookup
+# convert codes -> labels for median lookup
+LABELS = load_label_map(state_names)
 def label_of(node_key, code):
     return LABELS.get(node_key, {}).get(code, code)
 
@@ -325,11 +312,13 @@ demo_labels = {
     "Regular_Customer": label_of(Regular_Customer, ui_regular_code) if ui_regular_code else None,
 }
 
-# Auto-compute the 3 variables from demographics
-st.markdown('<div class="qcard"><div class="qtitle">Computed from Demographics <span class="badge">Step 2</span></div>', unsafe_allow_html=True)
-emp_score  = averaged_score_for_var(empathy_medians, demo_labels, DEMO_KEYS)
-conv_score = averaged_score_for_var(convenience_medians, demo_labels, DEMO_KEYS)
-trust_score= averaged_score_for_var(customer_trust_medians, demo_labels, DEMO_KEYS)
+# =========================================================
+# 2) AUTO-COMPUTED
+# =========================================================
+st.markdown('<div class="section qcard"><div class="qtitle">2) Predetermined scores from demographics <span class="badge">Step 2</span></div>', unsafe_allow_html=True)
+emp_score = averaged_score_for_var(empathy_medians, demo_labels)
+conv_score = averaged_score_for_var(convenience_medians, demo_labels)
+trust_score = averaged_score_for_var(customer_trust_medians, demo_labels)
 
 c1, c2, c3 = st.columns(3)
 for col, title, val in zip((c1, c2, c3),
@@ -341,38 +330,45 @@ for col, title, val in zip((c1, c2, c3),
         st.markdown("</div>", unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# Build evidence (STRING CODES ONLY)
-def build_evidence():
-    evidence = {}
-    def put(node_key, code_str):
-        if node_key and code_str is not None:
-            evidence[node_key] = str(code_str)
+# =========================================================
+# 3) CUSTOMER ANSWERS
+# =========================================================
+st.markdown('<div class="section qcard"><div class="qtitle">3) Customer answers (Likert) <span class="badge">Step 3</span></div>', unsafe_allow_html=True)
+q_val_code = likert_radio("Perceived Value", Perceived_Value)
+q_qual_code = likert_radio("Perceived Product Quality", Perceived_Product_Quality)
+q_price_code = likert_radio("Price Sensitivity", Price_Sensitivity)
+q_env_code = likert_radio("Physical Environment", Physical_Environment)
+st.markdown('</div>', unsafe_allow_html=True)
 
-    put(Gender, ui_gender_code)
-    put(Age, ui_age_code)
-    put(Marital_Status, ui_marital_code)
-    put(Employment_Status, ui_empstat_code)
-    put(Level_of_Education, ui_edu_code)
-    put(Shopping_frequency, ui_shopfreq_code)
-    put(Regular_Customer, ui_regular_code)
+# build evidence (send STRING CODES ONLY)
+evidence = {}
+def put(node_key, code_str):
+    if node_key and code_str is not None:
+        evidence[node_key] = str(code_str)
 
-    put(Empathy, str(emp_score))
-    put(Convenience, str(conv_score))
-    put(Customer_Trust, str(trust_score))
+put(Gender, ui_gender_code)
+put(Age, ui_age_code)
+put(Marital_Status, ui_marital_code)
+put(Employment_Status, ui_empstat_code)
+put(Level_of_Education, ui_edu_code)
+put(Shopping_frequency, ui_shopfreq_code)
+put(Regular_Customer, ui_regular_code)
 
-    put(Perceived_Value, q_val_code)
-    put(Perceived_Product_Quality, q_qual_code)
-    put(Physical_Environment, q_env_code)
-    put(Price_Sensitivity, q_price_code)
-    return evidence
+put(Empathy, str(emp_score))
+put(Convenience, str(conv_score))
+put(Customer_Trust, str(trust_score))
+
+put(Perceived_Value, q_val_code)
+put(Perceived_Product_Quality, q_qual_code)
+put(Physical_Environment, q_env_code)
+put(Price_Sensitivity, q_price_code)
 
 # =========================================================
-# PREDICTION (kept at the bottom)
+# 4) PREDICTION
 # =========================================================
-st.markdown('<div class="qcard"><div class="qtitle">Prediction <span class="badge">Step 3</span></div>', unsafe_allow_html=True)
+st.markdown('<div class="section qcard"><div class="qtitle">4) Prediction <span class="badge">Bottom</span></div>', unsafe_allow_html=True)
 
-if submit:
-    evidence = build_evidence()
+if st.button("Predict Purchase Intention", type="primary"):
     try:
         tgt, pred_class, conf, cls, prob_vec = predict_purchase(bundle, evidence)
 
@@ -383,12 +379,15 @@ if submit:
         st.session_state.prob_vec = prob_vec
         st.session_state.assist_ready = (conf >= ASSIST_THRESHOLD)
 
+        # Reset product choice each time you re-predict
+        st.session_state.product_category = "— Select a category —"
+
+        # Rerun so the app renders the assist section independent of the button state
+        st.rerun()
+
     except Exception as e:
         st.error(f"Prediction failed: {e}")
-        with st.expander("Evidence (debug)"):
-            st.json(evidence)
 
-# Render prediction from session (bottom of page)
 if st.session_state.pred is not None:
     tgt, pred_class = st.session_state.pred
     conf = st.session_state.conf
@@ -398,46 +397,28 @@ if st.session_state.pred is not None:
     mapping = {"1":"Very Low","2":"Low","3":"Medium","4":"High","5":"Very High"}
     pretty = mapping.get(str(pred_class), str(pred_class))
 
-    if conf >= 0.8:
-        st.success(f"Predicted **{tgt}**: **{pretty}**  |  Confidence: **{conf*100:.1f}%**")
-    elif conf >= 0.6:
-        st.info(f"Predicted **{tgt}**: **{pretty}**  |  Confidence: **{conf*100:.1f}%**")
-    else:
-        st.warning(f"Predicted **{tgt}**: **{pretty}**  |  Confidence: **{conf*100:.1f}%**")
-
+    st.success(f"Predicted **{tgt}**: **{pretty}**  |  Confidence: **{conf*100:.1f}%**")
     st.progress(int(round(conf*100)))
 
-    prob_df = pd.DataFrame(
-        {"Class": [mapping.get(str(c), str(c)) for c in cls], "Probability": prob_vec}
-    ).sort_values("Probability", ascending=False)
-    st.dataframe(
-        prob_df.style.format({"Probability": "{:.3f}"}),
-        use_container_width=True, hide_index=True
-    )
+    prob_df = pd.DataFrame({"Class": [mapping.get(str(c), str(c)) for c in cls],
+                            "Probability": prob_vec}).sort_values("Probability", ascending=False)
+    st.dataframe(prob_df.style.format({"Probability": "{:.3f}"}),
+                 use_container_width=True, hide_index=True)
 
-# Assisted selling (dropdown; persistent; appears below prediction)
+# Assisted selling (dropdown; persistent; appears after prediction)
 if st.session_state.assist_ready:
-    st.markdown('<div class="qcard"><div class="qtitle">Product Interest <span class="badge">Optional</span></div>', unsafe_allow_html=True)
-    options = ["— Select a category —"] + PRODUCT_CATEGORIES
+    st.markdown('<div class="section qcard"><div class="qtitle">5) Product interest (optional) <span class="badge">Assisted</span></div>', unsafe_allow_html=True)
+    OPTIONS = ["— Select a category —"] + PRODUCT_CATEGORIES
     choice = st.selectbox(
         "Which product category is the customer interested in?",
-        options,
-        key="product_category"
+        OPTIONS,
+        key="product_category",
+        index=OPTIONS.index(st.session_state.product_category)
+        if st.session_state.product_category in OPTIONS else 0
     )
-    if choice and choice != "— Select a category —":
-        st.info(f"Please call **{suggest_staff(choice)}** to assist with **{choice}**.")
+    if choice != "— Select a category —":
+        recommended = suggest_staff(choice)
+        st.info(f"Please call **{recommended}** to assist with **{choice}**.")
     st.markdown('</div>', unsafe_allow_html=True)
-
-# Reset utility
-col_reset, _ = st.columns([1,3])
-with col_reset:
-    if st.button("Reset", use_container_width=True):
-        st.session_state.pred = None
-        st.session_state.conf = 0.0
-        st.session_state.classes = []
-        st.session_state.prob_vec = None
-        st.session_state.assist_ready = False
-        st.session_state.product_category = "— Select a category —"
-        st.rerun()
 
 st.markdown('</div>', unsafe_allow_html=True)

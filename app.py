@@ -4,6 +4,39 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+#If the purchase intention is 60 and above then the customer will be asked which product category they are interested in and then a specialist staff member will assist the customer
+#If purchase intention is less, then a staff member will not be sent out the customer and rather wait for next highly probable purchasing customer
+#staff member is sent to assiss the customer in terms of advising on best breads or best diary products as per customer query 
+# ===== Assisted-selling config (does NOT affect the BN) =====
+ASSIST_THRESHOLD = 0.60  # 60%
+
+PRODUCT_CATEGORIES = [
+    "Dairy", "Meat", "Fruit & Veg", "Frozen Foods", "Bakery",
+    "Beverages", "Household", "Personal Care", "Snacks & Confectionery", "Pantry / Dry Goods"
+]
+
+# Map each category to a small roster; feel free to change names
+STAFF_ROSTER = {
+    "Dairy": ["Nomsa", "Lerato", "Johan"],
+    "Meat": ["Sipho", "Thandi", "Pieter"],
+    "Fruit & Veg": ["Ayesha", "Mpho", "Chris"],
+    "Frozen Foods": ["Zanele", "Andile", "Nadia"],
+    "Bakery": ["Carla", "Neo", "Hendrik"],
+    "Beverages": ["Kayla", "Sizwe", "Ruan"],
+    "Household": ["Retha", "Kabelo", "Yusuf"],
+    "Personal Care": ["Naledi", "Marius", "Anita"],
+    "Snacks & Confectionery": ["Bianca", "Xolani", "Gugu"],
+    "Pantry / Dry Goods": ["Leah", "Dumisani", "Ben"]
+}
+
+def suggest_staff(category: str) -> str:
+    """Pick a staff member deterministically based on category, so it doesn't flicker between reruns."""
+    roster = STAFF_ROSTER.get(category, [])
+    if not roster:
+        return "Any available associate"
+    idx = (hash(category) % len(roster))
+    return roster[idx]
+
 #Import VE as only importing the pickle, not rebuilding the model.
 try:
     from pgmpy.inference import VariableElimination
@@ -339,6 +372,33 @@ if st.button("Predict Purchase Intention", type="primary"):
 
         prob_df = pd.DataFrame({"Class": [pretty_class(c) for c in cls], "Probability": prob_vec}).sort_values("Probability", ascending=False)
         st.dataframe(prob_df.style.format({"Probability": "{:.3f}"}), use_container_width=True, hide_index=True)
+
+                # ---------- Assisted selling (optional, does NOT affect BN) ----------
+        if conf >= ASSIST_THRESHOLD:
+            st.markdown("### 5) Optional: Product interest (for quick assistance)")
+            st.caption("Since purchase intention is high, you can capture interest to alert a specialist.")
+
+            # Non-compulsory product choice
+           chosen_category = st.selectbox("Which product category...", PRODUCT_CATEGORIES)
+            )
+
+            # Recommend a staff member
+            recommended = suggest_staff(chosen_category)
+            st.info(f"Suggested staff member for **{chosen_category}**: **{recommended}**")
+
+            # (Optional) Provide a tiny handoff note you can copy
+            handoff = {
+                "category": chosen_category,
+                "recommended_staff": recommended,
+                "predicted_intention_class": str(pred_class),
+                "confidence": f"{conf*100:.1f}%"
+            }
+            with st.expander("Copy handoff details"):
+                st.json(handoff)
+        else:
+            st.markdown("### 5) Optional: Product interest")
+            st.caption("Prediction confidence is below 60%. Skipping assisted handoff to focus on higher-likelihood customers.")
+
 
 
     except Exception as e:

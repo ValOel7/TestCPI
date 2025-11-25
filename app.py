@@ -380,7 +380,7 @@ if st.button("Predict Purchase Intention", type="primary"):
 
             # Non-compulsory product choice
            chosen_category = st.selectbox("Which product category...", PRODUCT_CATEGORIES)
-            )
+            
 
             # Recommend a staff member
             recommended = suggest_staff(chosen_category)

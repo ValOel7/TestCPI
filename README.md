@@ -1,1 +1,14 @@
-# TestCPI
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/1.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/2.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/3.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/4.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/5.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/6.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/7.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/8.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/9.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/10.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/11.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/12.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/13.jpg" alt="main"/> </p>
+<p align="center"> <img src="https://github.com/ValOel7/TestCPI/blob/main/14.jpg" alt="main"/> </p>

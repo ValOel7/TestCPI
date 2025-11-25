@@ -212,8 +212,7 @@ empathy_medians = {
     "Shopping_frequency": {"1-2x/week": 3, "2-3x/week": 4, "3-4x/week": 4, "5-6x/week": 4, "6-7x/week": 4},
     "Regular_Customer": {"Regular": 4, "Only when\nneeded": 3, "Only when needed": 3},
     "Employment_Status": {"Employed": 4, "Unemployed": 4},
-    # If you want Level_of_Education to influence these, add values like below:
-    # "Level_of_Education": {"No formal": 3, "Basic": 3, "Diploma": 4, "Degree": 4, "Postgrad": 4},
+    "Level_of_Education": {"No formal": 3, "Basic": 3, "Diploma": 4, "Degree": 4, "Postgrad": 4},
 }
 convenience_medians = {
     "Gender": {"Male": 4, "Female": 4, "Prefer not to say": 3},
@@ -222,7 +221,7 @@ convenience_medians = {
     "Shopping_frequency": {"1-2x/week": 4, "2-3x/week": 4, "3-4x/week": 5, "5-6x/week": 5, "6-7x/week": 2},
     "Regular_Customer": {"Regular": 4, "Only when\nneeded": 3, "Only when needed": 3},
     "Employment_Status": {"Employed": 4, "Unemployed": 4},
-    # "Level_of_Education": {"No formal": 3, "Basic": 3, "Diploma": 4, "Degree": 4, "Postgrad": 4},
+    "Level_of_Education": {"No formal": 3, "Basic": 3, "Diploma": 4, "Degree": 4, "Postgrad": 4},
 }
 customer_trust_medians = {
     "Gender": {"Male": 4, "Female": 3, "Prefer not to say": 3},
@@ -231,7 +230,7 @@ customer_trust_medians = {
     "Shopping_frequency": {"1-2x/week": 3, "2-3x/week": 4, "3-4x/week": 3, "5-6x/week": 5, "6-7x/week": 3},
     "Regular_Customer": {"Regular": 4, "Only when\nneeded": 3, "Only when needed": 3},
     "Employment_Status": {"Employed": 3, "Unemployed": 4},
-    # "Level_of_Education": {"No formal": 3, "Basic": 3, "Diploma": 4, "Degree": 4, "Postgrad": 4},
+    "Level_of_Education": {"No formal": 3, "Basic": 3, "Diploma": 4, "Degree": 4, "Postgrad": 4},
 }
 
 # =========================================================

@@ -63,36 +63,88 @@ st.set_page_config(page_title="Purchase Intention Real-Time Assistant", page_ico
 st.markdown(
     """
     <style>
-      :root { --accent:#2563eb; }
+      :root {
+        /* light theme tokens */
+        --accent:#2563eb;
+        --page-bg:#ffffff;
+        --text:#0f172a;
+        --section-bg:#fbfcfe;
+        --section-br:#eef0f4;
+        --card-bg:#f7f9fd;
+        --card-br:#e7edf6;
+        --badge-bg:#eef2ff;
+        --badge-br:#e0e7ff;
+        --badge-fg:#3730a3;
+        --metric-bg:#f8f9fb;
+        --metric-br:#eef0f4;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          /* dark theme tokens */
+          --page-bg:#0b1020;
+          --text:#e5e7eb;
+          --section-bg:#0f172a;
+          --section-br:#1f2937;
+          --card-bg:#111827;
+          --card-br:#1f2937;
+          --badge-bg:#1f2937;
+          --badge-br:#374151;
+          --badge-fg:#c7d2fe;
+          --metric-bg:#0b1220;
+          --metric-br:#1f2937;
+        }
+      }
+
+      /* page */
       .block-container {max-width: 980px;}
+      html, body, [data-testid="stAppViewContainer"] {
+        background: var(--page-bg);
+        color: var(--text);
+      }
+
       h1, .stMarkdown h1 { letter-spacing: -0.3px; }
       h2, .stMarkdown h2 { margin-top: 0.25rem; }
 
-      /* Existing section look */
-      .section { background:#fbfcfe; border:1px solid #eef0f4; border-radius:14px;
-                 padding:18px 18px 12px; margin: 14px 0 10px; }
+      /* sections & cards */
+      .section {
+        background: var(--section-bg);
+        border:1px solid var(--section-br);
+        border-radius:14px; padding:18px 18px 12px; margin:14px 0 10px;
+        color: var(--text);
+      }
       .section h2 { margin: 0 0 14px 0; }
 
-      /* Subtle shaded cards & badges */
       .qcard {
-        background:#f7f9fd; border:1px solid #e7edf6; border-radius:14px;
-        padding:16px; margin:10px 0; box-shadow: 0 1px 0 rgba(10,31,68,0.03);
+        background: var(--card-bg);
+        border:1px solid var(--card-br);
+        border-radius:14px; padding:16px; margin:10px 0;
+        box-shadow: 0 1px 0 rgba(10,31,68,0.03);
+        color: var(--text);
       }
-      .qtitle { font-weight:600; margin-bottom:8px; }
+      .qtitle { font-weight:600; margin-bottom:8px; color: var(--text); }
+
       .badge {
         display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px;
-        background:#eef2ff; color:#3730a3; border:1px solid #e0e7ff;
+        background: var(--badge-bg); color: var(--badge-fg); border:1px solid var(--badge-br);
         margin-left:8px;
       }
 
-      .metric-card {background:#f8f9fb; padding:12px 16px; border-radius:14px; border:1px solid #eef0f4;}
-      .stRadio > label {font-weight:600;}
-      .st-emotion-cache-16idsys p { margin-bottom: 0.35rem; } /* tighten labels */
+      .metric-card {
+        background: var(--metric-bg); padding:12px 16px; border-radius:14px; border:1px solid var(--metric-br);
+        color: var(--text);
+      }
+
+      /* widgets */
+      .stRadio > label, .stSelectbox > label {font-weight:600; color: var(--text);}
+      .st-emotion-cache-16idsys p { margin-bottom: 0.35rem; }
       input[type="radio"]:checked { accent-color: var(--accent); }
+      select, .stSelectbox div[data-baseweb="select"] { color: var(--text); }
     </style>
     """,
     unsafe_allow_html=True
 )
+
 
 st.title("🛍️ Purchase Intention Real-Time Assistant")
 

@@ -1,19 +1,16 @@
-#Import the necessary files
+# app.py — infer products directly from the BN (no product question UI)
+
 import sys, platform, pickle, json, os
 import numpy as np
 import pandas as pd
 import streamlit as st
 
 # ===== Config =====
-ASSIST_THRESHOLD = 0.60  # 60%
-TOP_K = 3                # <-- show only the top-3 classes in the table
+ASSIST_THRESHOLD = 0.60   # show staff suggestion if PI confidence >= 60%
+TOP_K = 3                 # show top-k product categories
+SHOW_STAFF_SUGGESTION = True
 
-PRODUCT_CATEGORIES = [
-    "Dairy", "Meat", "Fruit & Veg", "Frozen Foods", "Bakery",
-    "Beverages", "Household", "Personal Care", "Snacks & Confectionery", "Pantry / Dry Goods"
-]
-
-# Map each category to a small roster; feel free to change names
+# Optional: product -> roster (used only if SHOW_STAFF_SUGGESTION=True)
 STAFF_ROSTER = {
     "Dairy": ["Nomsa", "Lerato", "Johan"],
     "Meat": ["Sipho", "Thandi", "Pieter"],
@@ -26,23 +23,19 @@ STAFF_ROSTER = {
     "Snacks & Confectionery": ["Bianca", "Xolani", "Gugu"],
     "Pantry / Dry Goods": ["Leah", "Dumisani", "Ben"]
 }
-
 def suggest_staff(category: str) -> str:
-    """Pick a staff member deterministically based on category, so it doesn't flicker between reruns."""
     roster = STAFF_ROSTER.get(category, [])
     if not roster:
         return "Any available associate"
-    idx = (hash(category) % len(roster))
-    return roster[idx]
+    return roster[hash(category) % len(roster)]
 
 # ---- Session defaults ----
 if "pred" not in st.session_state:
     st.session_state.pred = None          # (target, class_str)
     st.session_state.conf = 0.0           # float 0..1
-    st.session_state.classes = []         # class order
-    st.session_state.prob_vec = None      # np.array
-    st.session_state.assist_ready = False
-    st.session_state.product_category = "— Select a category —"
+    st.session_state.classes = []         # class order for PI
+    st.session_state.prob_vec = None      # np.array for PI distribution
+    st.session_state.top_products = None  # df with top-k products
 
 # ---- Import VE only (we load a fitted model from pickle) ----
 try:
@@ -56,7 +49,8 @@ except ModuleNotFoundError:
     )
     st.stop()
 
-PICKLE_PATH = "bn_pgmpy.pkl"
+# IMPORTANT: use the patched pickle that contains Product_Category
+PICKLE_PATH = "bn_pgmpy_products.pkl"
 
 # ---------- Page + styles ----------
 st.set_page_config(page_title="Purchase Intention Real-Time Assistant", page_icon="🛍️", layout="centered")
@@ -64,87 +58,60 @@ st.markdown(
     """
     <style>
       :root {
-        /* light theme tokens */
-        --accent:#2563eb;
-        --page-bg:#ffffff;
-        --text:#0f172a;
-        --section-bg:#fbfcfe;
-        --section-br:#eef0f4;
-        --card-bg:#f7f9fd;
-        --card-br:#e7edf6;
-        --badge-bg:#eef2ff;
-        --badge-br:#e0e7ff;
-        --badge-fg:#3730a3;
-        --metric-bg:#f8f9fb;
-        --metric-br:#eef0f4;
+        --accent: #2563eb;
+        --bg-section: #fbfcfe;
+        --bg-card: #f8f9fb;
+        --bd-soft: #eef0f4;
+        --text: #0b1220;
       }
-
       @media (prefers-color-scheme: dark) {
         :root {
-          /* dark theme tokens */
-          --page-bg:#0b1020;
-          --text:#e5e7eb;
-          --section-bg:#0f172a;
-          --section-br:#1f2937;
-          --card-bg:#111827;
-          --card-br:#1f2937;
-          --badge-bg:#1f2937;
-          --badge-br:#374151;
-          --badge-fg:#c7d2fe;
-          --metric-bg:#0b1220;
-          --metric-br:#1f2937;
+          --bg-section: #0f1420;
+          --bg-card: #0b1220;
+          --bd-soft: #1e293b;
+          --text: #e5e7eb;
         }
       }
-
-      /* page */
       .block-container {max-width: 980px;}
-      html, body, [data-testid="stAppViewContainer"] {
-        background: var(--page-bg);
-        color: var(--text);
-      }
-
+      body, .stMarkdown, .stText, p, label, h1, h2, h3, h4, h5 { color: var(--text) !important; }
       h1, .stMarkdown h1 { letter-spacing: -0.3px; }
       h2, .stMarkdown h2 { margin-top: 0.25rem; }
 
-      /* sections & cards */
       .section {
-        background: var(--section-bg);
-        border:1px solid var(--section-br);
-        border-radius:14px; padding:18px 18px 12px; margin:14px 0 10px;
-        color: var(--text);
+        background: var(--bg-section);
+        border:1px solid var(--bd-soft);
+        border-radius:14px; padding:18px 18px 12px; margin: 14px 0 10px;
       }
-      .section h2 { margin: 0 0 14px 0; }
-
       .qcard {
-        background: var(--card-bg);
-        border:1px solid var(--card-br);
+        background: var(--bg-section);
+        border:1px solid var(--bd-soft);
         border-radius:14px; padding:16px; margin:10px 0;
         box-shadow: 0 1px 0 rgba(10,31,68,0.03);
-        color: var(--text);
       }
-      .qtitle { font-weight:600; margin-bottom:8px; color: var(--text); }
-
+      .qtitle { font-weight:600; margin-bottom:8px; }
       .badge {
         display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px;
-        background: var(--badge-bg); color: var(--badge-fg); border:1px solid var(--badge-br);
-        margin-left:8px;
+        background:#eef2ff; color:#3730a3; border:1px solid #e0e7ff; margin-left:8px;
       }
-
+      @media (prefers-color-scheme: dark) {
+        .badge { background:#1e293b; color:#bfdbfe; border-color:#334155; }
+      }
       .metric-card {
-        background: var(--metric-bg); padding:12px 16px; border-radius:14px; border:1px solid var(--metric-br);
-        color: var(--text);
+        background: var(--bg-card);
+        padding:12px 16px; border-radius:14px; border:1px solid var(--bd-soft);
       }
-
-      /* widgets */
-      .stRadio > label, .stSelectbox > label {font-weight:600; color: var(--text);}
-      .st-emotion-cache-16idsys p { margin-bottom: 0.35rem; }
+      .stRadio > label {font-weight:600;}
+      .st-emotion-cache-16idsys p { margin-bottom: 0.35rem; } /* tighten labels */
       input[type="radio"]:checked { accent-color: var(--accent); }
-      select, .stSelectbox div[data-baseweb="select"] { color: var(--text); }
+
+      /* Mobile radio spacing */
+      @media (max-width: 420px) {
+        .stRadio [role="radiogroup"] { gap: 4px !important; }
+      }
     </style>
     """,
     unsafe_allow_html=True
 )
-
 
 st.title("🛍️ Purchase Intention Real-Time Assistant")
 
@@ -160,46 +127,37 @@ except Exception as e:
     st.error(f"❌ Failed to load pickle at '{PICKLE_PATH}': {e}")
     st.stop()
 
-# basic key checks
 for k in ("model", "target", "classes", "state_names"):
     if k not in bundle:
         st.error(f"❌ Pickle missing required key: {k}")
         st.stop()
 
 model = bundle["model"]
-target_node = bundle["target"]
+TARGET = bundle["target"]
 classes = bundle["classes"]
 state_names = bundle["state_names"]  # dict node -> list of states
 
 # pgmpy compatibility shims
 if not hasattr(model, "check_model"):
     def _noop_check_model(*args, **kwargs): return True
-    try:
-        model.check_model = _noop_check_model
-    except Exception:
-        pass
+    try: model.check_model = _noop_check_model
+    except Exception: pass
 
 if not hasattr(model, "factors"):
-    try:
-        cpds = model.get_cpds()
-    except Exception:
-        cpds = []
+    try: cpds = model.get_cpds()
+    except Exception: cpds = []
     factors = []
     for cpd in cpds:
         tf = getattr(cpd, "to_factor", None)
         if callable(tf):
-            try:
-                factors.append(tf()); continue
-            except Exception:
-                pass
+            try: factors.append(tf()); continue
+            except Exception: pass
         factors.append(cpd)
-    try:
-        model.factors = factors
-    except Exception:
-        pass
+    try: model.factors = factors
+    except Exception: pass
 
 # ---------- helpers ----------
-def pick_existing_node(state_names_dict, candidates: list[str]):
+def pick_existing_node(state_names_dict, candidates):
     if isinstance(state_names_dict, dict):
         for c in candidates:
             if c in state_names_dict:
@@ -224,15 +182,29 @@ def averaged_score_for_var(var_medians_dict, demo_answers_labels: dict) -> int:
         return 3
     return clamp_round_1_to_5(float(np.mean(vals)))
 
-def predict_purchase(bundle_obj, evidence: dict):
+def predict_both(bundle_obj, evidence: dict):
     ve = VariableElimination(bundle_obj["model"])
-    q = ve.query([bundle_obj["target"]], evidence=evidence, show_progress=False)
-    probs = dict(zip(q.state_names[bundle_obj["target"]], q.values.flatten().astype(float)))
-    prob_vec = np.array([probs.get(c, 0.0) for c in bundle_obj["classes"]], dtype=float)
-    idx = int(prob_vec.argmax())
-    return bundle_obj["target"], bundle_obj["classes"][idx], float(prob_vec[idx]), bundle_obj["classes"], prob_vec
 
-# ---------- label mapping (pretty UI ↔ string codes the model expects) ----------
+    # Purchase Intention
+    q_pi = ve.query([bundle_obj["target"]], evidence=evidence, show_progress=False)
+    pi_states = q_pi.state_names[bundle_obj["target"]]
+    pi_probs  = q_pi.values.flatten().astype(float)
+    pi_idx    = int(pi_probs.argmax())
+    pi_pred   = pi_states[pi_idx]
+    pi_conf   = float(pi_probs[pi_idx])
+
+    # Products (if present)
+    products_topk = products_all = None
+    if "Product_Category" in bundle_obj["model"].nodes():
+        q_pc = ve.query(["Product_Category"], evidence=evidence, show_progress=False)
+        pc_states = q_pc.state_names["Product_Category"]
+        pc_probs  = q_pc.values.flatten().astype(float)
+        products_all  = pd.DataFrame({"Product": pc_states, "Probability": pc_probs}).sort_values("Probability", ascending=False)
+        products_topk = products_all.head(TOP_K)
+
+    return (pi_pred, pi_conf, pi_states, pi_probs, products_topk, products_all)
+
+# ---------- label mapping (pretty UI ↔ codes the model expects) ----------
 LABEL_MAP_PATH = "state_label_map.json"  # optional override
 DEFAULT_LABELS = {
     "Gender": {"1": "Male", "2": "Female", "3": "Prefer not to say"},
@@ -246,13 +218,12 @@ DEFAULT_LABELS = {
     "Shopping_frequency": {"1": "1-2x/week", "2": "2-3x/week", "3": "3-4x/week", "4": "5-6x/week", "5": "6-7x/week"},
     "Regular_Customer": {"1": "Regular", "2": "Only when needed"},
 }
-
 def load_label_map(state_names_dict) -> dict:
     labels = {}
     if isinstance(state_names_dict, dict):
         for node, states in state_names_dict.items():
             base = DEFAULT_LABELS.get(node, {})
-            labels[node] = {s: base.get(s, s) for s in states}  # identity fallback
+            labels[node] = {s: base.get(s, s) for s in states}
     if os.path.exists(LABEL_MAP_PATH):
         try:
             with open(LABEL_MAP_PATH, "r", encoding="utf-8") as f:
@@ -260,23 +231,22 @@ def load_label_map(state_names_dict) -> dict:
             for node, mapping in override.items():
                 if node in labels:
                     labels[node].update(mapping)
-        except Exception as e:
-            st.warning(f"Could not read {LABEL_MAP_PATH}: {e}")
+        except Exception:
+            pass
     return labels
 
 LABELS = load_label_map(state_names)
 
 def radio_mapped(title: str, node_key: str, *, horizontal: bool = True):
-    """Show pretty labels only; return the underlying BN state code (string)."""
     opts = state_names.get(node_key, []) if isinstance(state_names, dict) else []
     if not opts:
         return None
     pretty = [LABELS.get(node_key, {}).get(code, code) for code in opts]
     idx = st.radio(title, list(range(len(opts))), format_func=lambda i: pretty[i], horizontal=horizontal)
-    return opts[idx]  # underlying string code
+    return opts[idx]
 
 def likert_radio(title: str, node_key: str):
-    opts = state_names.get(node_key, ["1", "2", "3", "4", "5"]) if isinstance(state_names, dict) else ["1","2","3","4","5"]
+    opts = state_names.get(node_key, ["1","2","3","4","5"]) if isinstance(state_names, dict) else ["1","2","3","4","5"]
     pretty = {
         "1": "1 = Strongly disagree",
         "2": "2 = Disagree",
@@ -287,7 +257,7 @@ def likert_radio(title: str, node_key: str):
     idx = st.radio(title, list(range(len(opts))), format_func=lambda i: pretty.get(opts[i], opts[i]), horizontal=True)
     return opts[idx]
 
-# ---------- discover node names (underscore / space tolerant) ----------
+# ---------- discover node names ----------
 Gender = pick_existing_node(state_names, ["Gender"])
 Age = pick_existing_node(state_names, ["Age"])
 Marital_Status = pick_existing_node(state_names, ["Marital_Status", "Marital Status"])
@@ -305,7 +275,7 @@ Perceived_Product_Quality = pick_existing_node(state_names, ["Perceived_Product_
 Physical_Environment = pick_existing_node(state_names, ["Physical_Environment", "Physical Environment"])
 Price_Sensitivity = pick_existing_node(state_names, ["Price_Sensitivity", "Price Sensitivity"])
 
-# ---------- medians (use FRIENDLY LABELS, not codes) ----------
+# ---------- medians (friendly labels) ----------
 empathy_medians = {
     "Gender": {"Male": 4, "Female": 4, "Prefer not to say": 3},
     "Age": {"18-22": 3, "23-28": 4, "29-35": 4, "35-49": 3, "50-65": 4},
@@ -350,8 +320,7 @@ with col2:
     ui_shopfreq_code = radio_mapped("Shopping frequency", Shopping_frequency, horizontal=False)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# convert codes -> labels for median lookup
-LABELS = load_label_map(state_names)
+# convert codes -> labels for the medians
 def label_of(node_key, code):
     return LABELS.get(node_key, {}).get(code, code)
 
@@ -366,7 +335,7 @@ demo_labels = {
 }
 
 # =========================================================
-# 2) AUTO-COMPUTED
+# 2) AUTO-COMPUTED (from demographics)
 # =========================================================
 st.markdown('<div class="section qcard"><div class="qtitle">2) Predetermined scores from demographics <span class="badge">Step 2</span></div>', unsafe_allow_html=True)
 emp_score = averaged_score_for_var(empathy_medians, demo_labels)
@@ -384,16 +353,16 @@ for col, title, val in zip((c1, c2, c3),
 st.markdown('</div>', unsafe_allow_html=True)
 
 # =========================================================
-# 3) CUSTOMER ANSWERS
+# 3) CUSTOMER ANSWERS (Likert)
 # =========================================================
 st.markdown('<div class="section qcard"><div class="qtitle">3) Customer answers (Likert) <span class="badge">Step 3</span></div>', unsafe_allow_html=True)
-q_val_code = likert_radio("Do you think this store provides good value for money  (being affordable for what you get) ?", Perceived_Value)
+q_val_code  = likert_radio("Do you think this store provides good value for money (affordable for what you get)?", Perceived_Value)
 q_qual_code = likert_radio("Do you think the overall quality of the products in this shop is good?", Perceived_Product_Quality)
-q_price_code = likert_radio("Are you willing to still shop from this store even if prices increase slightly, due to the proximity of the store?", Price_Sensitivity)
-q_env_code = likert_radio("Do you think the store is appealing, clean, tidy and creates a pleasant shopping environment?", Physical_Environment)
+q_price_code= likert_radio("Would you still shop here if prices increased slightly (e.g., for convenience/proximity)?", Price_Sensitivity)
+q_env_code  = likert_radio("Is the store appealing, clean, tidy, and a pleasant shopping environment?", Physical_Environment)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# build evidence (send STRING CODES ONLY)
+# Build evidence (send STRING CODES ONLY)
 evidence = {}
 def put(node_key, code_str):
     if node_key and code_str is not None:
@@ -417,66 +386,55 @@ put(Physical_Environment, q_env_code)
 put(Price_Sensitivity, q_price_code)
 
 # =========================================================
-# 4) PREDICTION
+# 4) PREDICTION (PI + Products)
 # =========================================================
 st.markdown('<div class="section qcard"><div class="qtitle">4) Prediction <span class="badge">Step 4</span></div>', unsafe_allow_html=True)
 
 if st.button("Predict Purchase Intention", type="primary"):
     try:
-        tgt, pred_class, conf, cls, prob_vec = predict_purchase(bundle, evidence)
+        pi_pred, pi_conf, pi_states, pi_probs, products_topk, products_all = predict_both(bundle, evidence)
 
-        # Save results to session state
-        st.session_state.pred = (tgt, pred_class)
-        st.session_state.conf = conf
-        st.session_state.classes = cls
-        st.session_state.prob_vec = prob_vec
-        st.session_state.assist_ready = (conf >= ASSIST_THRESHOLD)
+        st.session_state.pred = (TARGET, pi_pred)
+        st.session_state.conf = pi_conf
+        st.session_state.classes = pi_states
+        st.session_state.prob_vec = pi_probs
+        st.session_state.top_products = products_topk
 
-        # Reset product choice each time you re-predict
-        st.session_state.product_category = "— Select a category —"
-
-        # Rerun so the app renders the assist section independent of the button state
         st.rerun()
-
     except Exception as e:
         st.error(f"Prediction failed: {e}")
 
 if st.session_state.pred is not None:
     tgt, pred_class = st.session_state.pred
     conf = st.session_state.conf
-    cls = st.session_state.classes
-    prob_vec = st.session_state.prob_vec
+    cls_states = st.session_state.classes
+    pi_vec = st.session_state.prob_vec
+    top_products = st.session_state.top_products
 
+    # Pretty mapping for PI
     mapping = {"1":"Very Low","2":"Low","3":"Medium","4":"High","5":"Very High"}
     pretty = mapping.get(str(pred_class), str(pred_class))
 
     st.success(f"Predicted **{tgt}**: **{pretty}**  |  Confidence: **{conf*100:.1f}%**")
     st.progress(int(round(conf*100)))
 
-    # --------- Top-K probability table (this is the only functional change) ---------
-    prob_df = pd.DataFrame(
-        {"Class": [mapping.get(str(c), str(c)) for c in cls],
-         "Probability": prob_vec}
-    )
-    prob_df = prob_df.nlargest(TOP_K, "Probability")  # keep only top-K rows
+    # PI distribution (top-3 only, to keep it compact)
+    pi_df = pd.DataFrame({"Class": [mapping.get(str(c), str(c)) for c in cls_states],
+                          "Probability": pi_vec})
+    pi_df = pi_df.sort_values("Probability", ascending=False).head(3)
+    st.dataframe(pi_df.style.format({"Probability": "{:.3f}"}), use_container_width=True, hide_index=True)
 
-    st.dataframe(
-        prob_df.style.format({"Probability": "{:.3f}"}),
-        use_container_width=True, hide_index=True
-    )
+    # Products Top-K
+    if top_products is not None and len(top_products) > 0:
+        st.subheader("Top product categories (inferred)")
+        st.dataframe(
+            top_products.style.format({"Probability": "{:.3f}"}),
+            use_container_width=True, hide_index=True
+        )
 
-# Assisted selling (dropdown; persistent; appears after prediction)
-if st.session_state.assist_ready:
-    st.markdown('<div class="section qcard"><div class="qtitle">5) Product interest <span class="badge">Assisted</span></div>', unsafe_allow_html=True)
-    OPTIONS = ["— Select a category —"] + PRODUCT_CATEGORIES
-    choice = st.selectbox(
-        "Which product category is the customer interested in?",
-        OPTIONS,
-        key="product_category",
-        index=OPTIONS.index(st.session_state.product_category)
-        if st.session_state.product_category in OPTIONS else 0
-    )
-    if choice != "— Select a category —":
-        recommended = suggest_staff(choice)
-        st.info(f"Please call **{recommended}** to assist with **{choice}**.")
-    st.markdown('</div>', unsafe_allow_html=True)
+        if SHOW_STAFF_SUGGESTION and conf >= ASSIST_THRESHOLD:
+            top_product = top_products.iloc[0]["Product"]
+            staff = suggest_staff(str(top_product))
+            st.info(f"Please call **{staff}** to assist with **{top_product}**.")
+
+st.markdown('</div>', unsafe_allow_html=True)
